@@ -13,12 +13,6 @@ export const base64_url_sha3_256_challenge = arrayBufferToBase64(
   sha3_256_challenge_bytes
 );
 
-interface OptionalOverrides {
-  userIdOverride?: string;
-  residentKeyOverride?: "preferred" | "required";
-  additionalExtensions?: any;
-}
-
 export async function isSpcAvailable() {
   const spcAvailable = Boolean(PaymentRequest);
   return spcAvailable;
@@ -31,87 +25,85 @@ export type SPCAuthenticationExtensionsClientInputs =
     };
   };
 
+  export type SPCAuthenticatorSelectionCriteria =
+  AuthenticatorSelectionCriteria & {
+    tokenBinding?: string;
+  };
+
 export type SPCPublicKeyCredentialCreationOptions = Omit<
   PublicKeyCredentialCreationOptions & {
     extensions: SPCAuthenticationExtensionsClientInputs;
+    authenticatorSelection: SPCAuthenticatorSelectionCriteria;
   },
   ""
 >;
+
+export const defaultRp: PublicKeyCredentialRpEntity = {
+  id: window.location.hostname,
+  name: window.location.origin,
+};
+
+export const defaultPubKeyCredParams: PublicKeyCredentialParameters[] = [
+  {
+    type: "public-key",
+    alg: -7, // ECDSA, not supported on Windows.
+  },
+];
+
+export const defaultUser = {
+  // Set an understandable 'username' in case the WebAuthn UX displays it
+  // (e.g., the Passkeys UX on Chrome MacOS 108+). This is for display ONLY,
+  // and has no bearing on SPC's functionality in general. (For example, it
+  // is NOT shown in the SPC transaction dialog.)
+  name: "Andrew",
+  displayName: "",
+  // TODO look at this later
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  id: Uint8Array.from(String(Math.random() * 99999999)),
+};
+
+export const defaultResidentKey: ResidentKeyRequirement = spcSupportsPreferred()
+  ? "preferred"
+  : "required";
+
+export const defaultAuthenticatorSelection: SPCPublicKeyCredentialCreationOptions['authenticatorSelection'] = {
+  userVerification: "required",
+  residentKey: defaultResidentKey,
+  authenticatorAttachment: "platform",
+};
+
+export const defaultPublicKey: SPCPublicKeyCredentialCreationOptions = {
+  rp: defaultRp,
+  user: defaultUser,
+  challenge: sha3_256_challenge_bytes,
+  pubKeyCredParams: defaultPubKeyCredParams,
+  authenticatorSelection: defaultAuthenticatorSelection,
+  extensions: {
+    payment: {
+      isPayment: true,
+    },
+  },
+};
 
 /**
  * Creates a demo WebAuthn credential, optionally setting the 'payment'
  * extension. The created credential will always have the name 'Andrew ····
  * 1234', matching the demo payment instrument used in authentication.
  *
- * @param {boolean} setPaymentExtension - whether or not to enable the 'payment'
- *     extension in the created credential.
- * @param {object} optionalOverrides - a set of optional overrides for the
- *     default credential creation parameters.
- * @return {PublicKeyCredential} the created credential.
+ * @param {SPCPublicKeyCredentialCreationOptions} publicKey
  */
 export async function createCredential(
-  setPaymentExtension: boolean,
-  optionalOverrides: OptionalOverrides
+  publicKey: SPCPublicKeyCredentialCreationOptions = defaultPublicKey
 ): Promise<Credential | null> {
-  const { userIdOverride, residentKeyOverride, additionalExtensions } =
-    optionalOverrides;
-  const rp: PublicKeyCredentialRpEntity = {
-    id: window.location.hostname,
-    name: window.location.origin,
-  };
-  const pubKeyCredParams: PublicKeyCredentialParameters[] = [
-    {
-      type: "public-key",
-      alg: -7, // ECDSA, not supported on Windows.
-    },
-  ];
-
-  const userId =
-    userIdOverride !== undefined
-      ? userIdOverride
-      : String(Math.random() * 999999999);
-  const user = {
-    // Set an understandable 'username' in case the WebAuthn UX displays it
-    // (e.g., the Passkeys UX on Chrome MacOS 108+). This is for display ONLY,
-    // and has no bearing on SPC's functionality in general. (For example, it
-    // is NOT shown in the SPC transaction dialog.)
-    name: "Andrew",
-    displayName: "",
-    // TODO look at this later
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    id: Uint8Array.from(userId),
+  const publicKeyCreationOptions: SPCPublicKeyCredentialCreationOptions = {
+    ...defaultPublicKey,
+    ...publicKey,
   };
 
-  let residentKey: ResidentKeyRequirement = spcSupportsPreferred()
-    ? "preferred"
-    : "required";
-  if (residentKeyOverride !== undefined) residentKey = residentKeyOverride;
-
-  const publicKey: SPCPublicKeyCredentialCreationOptions = {
-    rp,
-    user,
-    challenge: sha3_256_challenge_bytes,
-    pubKeyCredParams,
-    authenticatorSelection: {
-      userVerification: "required",
-      residentKey,
-      authenticatorAttachment: "platform",
-    },
-    extensions: {},
-  };
-
-  if (setPaymentExtension || additionalExtensions !== undefined) {
-    publicKey["extensions"] =
-      additionalExtensions !== undefined ? additionalExtensions : {};
-    if (setPaymentExtension) {
-      publicKey["extensions"]["payment"] = {
-        isPayment: true,
-      };
-    }
-  }
-
-  return await navigator.credentials.create({ publicKey });
+  return await navigator.credentials.create({
+    publicKey: publicKeyCreationOptions,
+  });
 }
 
 /**
