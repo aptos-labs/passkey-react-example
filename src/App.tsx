@@ -12,7 +12,9 @@ import {
   isSpcAvailable,
   objectToDictionary,
   sha3_256_challenge_bytes,
-} from "./helper/spc";
+  defaultPublicKey,
+  defaultAuthenticatorSelection,
+} from "./helper/webauthn";
 import { encodeSignature } from "./helper/encode";
 
 function App() {
@@ -22,12 +24,26 @@ function App() {
 
   // Create the passkey via credential registration ceremony
   const createPasskey = async () => {
-    const credential = (await createCredential(
-      true,
-      {}
-    )) as PublicKeyCredential;
+    const credential = (await createCredential()) as PublicKeyCredential;
     const credentialObject = objectToDictionary(credential, Encoding.base64Url);
     console.log("==== PublicKeyCredential -- Registration Response ===");
+    console.log(credentialObject);
+    setCredentialId(credentialObject.rawId);
+    window.localStorage.setItem("credentialId", credentialObject.rawId);
+  };
+
+  // Create the passkey via credential registration ceremony with TokenBinding
+  // @see https://www.w3.org/TR/webauthn-2/#dictdef-tokenbinding
+  const createPasskeyWithTokenBinding = async () => {
+    const credential = (await createCredential({ 
+      ...defaultPublicKey, 
+      authenticatorSelection: {
+        ...defaultAuthenticatorSelection,
+        tokenBinding: "required",
+      } 
+    })) as PublicKeyCredential;
+    const credentialObject = objectToDictionary(credential, Encoding.base64Url);
+    console.log("==== PublicKeyCredential with Token Binding -- Registration Response ===");
     console.log(credentialObject);
     setCredentialId(credentialObject.rawId);
     window.localStorage.setItem("credentialId", credentialObject.rawId);
@@ -67,6 +83,12 @@ function App() {
       clientDataJSON,
     });
 
+    console.log("==== Raw SPC Payment Response ===");
+    console.log(paymentResponse);
+    console.log("==== Raw SPC Payment Response - authenticatorData ===");
+    console.log(new Uint8Array(paymentResponse.details.response.authenticatorData).toString());
+    console.log("==== Raw SPC Payment Response - clientDataJSON ===");
+    console.log(new Uint8Array(paymentResponse.details.response.clientDataJSON).toString());
     console.log("==== BCS Encoded WebAuthn Signature ===");
     console.log(encodedSignature);
     console.log("==== BCS Encoded WebAuthn Signature as Base64Url ===");
@@ -106,6 +128,10 @@ function App() {
     });
     console.log("==== BCS Encoded WebAuthn Signature ===");
     console.log(encodedSignature);
+    console.log("==== Raw SPC Payment Response - authenticatorData ===");
+    console.log(new Uint8Array(authenticatorData).toString());
+    console.log("==== Raw SPC Payment Response - clientDataJSON ===");
+    console.log(new Uint8Array(clientDataJSON).toString());
     console.log("==== BCS Encoded WebAuthn Signature as Base64Url ===");
     console.log(arrayBufferToBase64Url(encodedSignature));
     console.log("==== PublicKeyCredential -- Authentication Response ===");
@@ -133,6 +159,7 @@ function App() {
             isSpcAvailable?
           </button>
           <button onClick={createPasskey}>Create credential</button>
+          <button onClick={createPasskeyWithTokenBinding}>Create credential + tokenBinding</button>
           <button onClick={signWithPasskey}>Sign with credential</button>
           <button onClick={createSPC}>Create SPC</button>
         </div>
