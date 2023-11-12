@@ -4,23 +4,27 @@ import viteLogo from "/vite.svg";
 import "./App.css";
 import {
   Encoding,
-  arrayBufferToBase64Url,
   base64ToArray,
   createCredential,
   createSPCPaymentRequest,
   getCredential,
   isSpcAvailable,
   objectToDictionary,
-  sha3_256_challenge_bytes,
-  defaultPublicKey,
   defaultAuthenticatorSelection,
+  generateDefaultPublicKey,
+  generateTestRawTxn,
+  p256SignatureFromDER,
+  createSPCCredential,
+  base64UrlToArray,
 } from "./helper/webauthn";
-import { encodeSignature } from "./helper/encode";
 
 function App() {
   const [credentialId, setCredentialId] = useState<string | null>(
     window.localStorage.getItem("credentialId")
   );
+  const [spcCredentialId, setSpcCredentialId] = useState<string | null>(
+    window.localStorage.getItem("spcCredentialId")
+  )
 
   // Create the passkey via credential registration ceremony
   const createPasskey = async () => {
@@ -32,9 +36,20 @@ function App() {
     window.localStorage.setItem("credentialId", credentialObject.rawId);
   };
 
+  // Create the passkey via credential registration ceremony
+  const createSPCPasskey = async () => {
+    const credential = (await createSPCCredential()) as PublicKeyCredential;
+    const credentialObject = objectToDictionary(credential, Encoding.base64Url);
+    console.log("==== SPC PublicKeyCredential -- Registration Response ===");
+    console.log(credentialObject);
+    setSpcCredentialId(credentialObject.rawId);
+    window.localStorage.setItem("spcCredentialId", credentialObject.rawId);
+  };
+
   // Create the passkey via credential registration ceremony with TokenBinding
   // @see https://www.w3.org/TR/webauthn-2/#dictdef-tokenbinding
   const createPasskeyWithTokenBinding = async () => {
+    const defaultPublicKey = await generateDefaultPublicKey();
     const credential = (await createCredential({ 
       ...defaultPublicKey, 
       authenticatorSelection: {
@@ -53,16 +68,17 @@ function App() {
    * Creates a secure payment confirmation (SPC)
    * Challenge input is listed at the top spc.ts
    */
-  const createSPC = async () => {
-    if (!credentialId) {
-      alert("No registered credential");
+  const signWithSPCPasskey = async () => {
+    if (!spcCredentialId) {
+      alert("No registered credential for SPC");
       return;
     }
 
-    const realCredentialId: Uint8Array = base64ToArray(credentialId);
+    const realCredentialId: Uint8Array = base64UrlToArray(spcCredentialId);
+    const { challenge, rawTransaction } = await generateTestRawTxn();
 
     const paymentRequest = createSPCPaymentRequest({
-      challenge: sha3_256_challenge_bytes,
+      challenge: challenge,
       rpId: window.location.hostname,
       credentialIds: [realCredentialId],
       instrument: {
@@ -77,22 +93,17 @@ function App() {
 
     const { clientDataJSON, authenticatorData, signature } = paymentResponse
       .details.response as AuthenticatorAssertionResponse;
-    const encodedSignature = encodeSignature({
-      signature,
-      authenticatorData,
-      clientDataJSON,
-    });
 
+    console.log("==== Raw Txn BCS Bytes ===")
+    console.log(rawTransaction.bcsToBytes().toString());
     console.log("==== Raw SPC Payment Response ===");
     console.log(paymentResponse);
     console.log("==== Raw SPC Payment Response - authenticatorData ===");
-    console.log(new Uint8Array(paymentResponse.details.response.authenticatorData).toString());
+    console.log(new Uint8Array(authenticatorData).toString());
     console.log("==== Raw SPC Payment Response - clientDataJSON ===");
-    console.log(new Uint8Array(paymentResponse.details.response.clientDataJSON).toString());
-    console.log("==== BCS Encoded WebAuthn Signature ===");
-    console.log(encodedSignature);
-    console.log("==== BCS Encoded WebAuthn Signature as Base64Url ===");
-    console.log(arrayBufferToBase64Url(encodedSignature));
+    console.log(new Uint8Array(clientDataJSON).toString());
+    console.log("==== WebAuthn Signature, Compact ===");
+    console.log(p256SignatureFromDER(new Uint8Array(signature)).toString());
     console.log("==== PublicKeyCredential -- SPC Authentication Response ===");
     console.log(objectToDictionary(paymentResponse, Encoding.base64Url));
   };
@@ -114,6 +125,7 @@ function App() {
       },
     ];
 
+    const { rawTransaction } = await generateTestRawTxn();
     const authenticationResponse = await getCredential(allowedCredentials);
     if (!authenticationResponse) {
       alert("Failed webauthn.get assertion");
@@ -121,19 +133,14 @@ function App() {
     }
     const { clientDataJSON, authenticatorData, signature } =
       authenticationResponse.response as AuthenticatorAssertionResponse;
-    const encodedSignature = encodeSignature({
-      signature,
-      authenticatorData,
-      clientDataJSON,
-    });
-    console.log("==== BCS Encoded WebAuthn Signature ===");
-    console.log(encodedSignature);
-    console.log("==== Raw SPC Payment Response - authenticatorData ===");
+    console.log("==== Raw Txn BCS Bytes ===")
+    console.log(rawTransaction.bcsToBytes().toString());
+    console.log("==== WebAuthn Response - authenticatorData ===");
     console.log(new Uint8Array(authenticatorData).toString());
-    console.log("==== Raw SPC Payment Response - clientDataJSON ===");
+    console.log("==== WebAuthn Response - clientDataJSON ===");
     console.log(new Uint8Array(clientDataJSON).toString());
-    console.log("==== BCS Encoded WebAuthn Signature as Base64Url ===");
-    console.log(arrayBufferToBase64Url(encodedSignature));
+    console.log("==== WebAuthn Signature Compact ===");
+    console.log(p256SignatureFromDER(new Uint8Array(signature)).toString());
     console.log("==== PublicKeyCredential -- Authentication Response ===");
     console.log(objectToDictionary(authenticationResponse, Encoding.base64Url));
   };
@@ -159,9 +166,10 @@ function App() {
             isSpcAvailable?
           </button>
           <button onClick={createPasskey}>Create credential</button>
+          <button onClick={createSPCPasskey}>Create SPC Credential</button>
           <button onClick={createPasskeyWithTokenBinding}>Create credential + tokenBinding</button>
           <button onClick={signWithPasskey}>Sign with credential</button>
-          <button onClick={createSPC}>Create SPC</button>
+          <button onClick={signWithSPCPasskey}>Sign with SPC credential</button>
         </div>
         <p>
           Edit <code>src/App.tsx</code> and save to test HMR

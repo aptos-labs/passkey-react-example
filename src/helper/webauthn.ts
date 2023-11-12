@@ -2,16 +2,57 @@
 /** Some of this code is sourced from https://rsolomakhin.github.io/pr/spc/ */
 
 import { sha3_256 } from "@noble/hashes/sha3";
+import { p256 } from "@noble/curves/p256";
 import base64url from "base64url";
+import {
+  AccountAddress,
+  AptosConfig,
+  Aptos,
+  parseTypeTag,
+  U64,
+  Network,
+  getSigningMessage,
+} from "@aptos-labs/ts-sdk";
+import padString from "./padString";
 
-export const base64_url_challenge = "aGVsbG8gd29ybGQ";
-export const sha3_256_challenge_bytes = sha3_256
-  .create()
-  .update(base64ToArray(base64_url_challenge))
-  .digest();
-export const base64_url_sha3_256_challenge = arrayBufferToBase64(
-  sha3_256_challenge_bytes
-);
+const aptosConfig = new AptosConfig({
+  network: Network.DEVNET,
+});
+
+const aptosClient = new Aptos(aptosConfig);
+const APTOS_COIN = "0x1::aptos_coin::AptosCoin";
+
+export const generateTestRawTxn = async () => {
+  const account = AccountAddress.fromString("0x1");
+  const { rawTransaction } = await aptosClient.generateTransaction({
+    sender: account,
+    data: {
+      function: "0x1::aptos_account::transfer_coins",
+      typeArguments: [parseTypeTag(APTOS_COIN)],
+      functionArguments: [account, new U64(1000)],
+    },
+    options: {
+      accountSequenceNumber: 0,
+      gasUnitPrice: 100,
+      maxGasAmount: 1000,
+      expireTimestamp: new Date("December 17, 1995 03:24:00").getTime(),
+    },
+  });
+
+  const signingMessage = getSigningMessage(rawTransaction);
+  const challenge = sha3_256.create().update(signingMessage).digest();
+
+  return { rawTransaction, signingMessage, challenge };
+};
+
+export const p256SignatureFromDER = (derSig: Uint8Array) => {
+  let sig = p256.Signature.fromDER(derSig);
+  
+  // makes the signature canonical
+  sig = sig.normalizeS();
+  const rawSig = sig.toCompactRawBytes();
+  return rawSig;
+};
 
 export async function isSpcAvailable() {
   const spcAvailable = Boolean(PaymentRequest);
@@ -25,7 +66,7 @@ export type SPCAuthenticationExtensionsClientInputs =
     };
   };
 
-  export type SPCAuthenticatorSelectionCriteria =
+export type SPCAuthenticatorSelectionCriteria =
   AuthenticatorSelectionCriteria & {
     tokenBinding?: string;
   };
@@ -67,24 +108,44 @@ export const defaultResidentKey: ResidentKeyRequirement = spcSupportsPreferred()
   ? "preferred"
   : "required";
 
-export const defaultAuthenticatorSelection: SPCPublicKeyCredentialCreationOptions['authenticatorSelection'] = {
-  userVerification: "required",
-  residentKey: defaultResidentKey,
-  authenticatorAttachment: "platform",
-};
+export const defaultAuthenticatorSelection: SPCPublicKeyCredentialCreationOptions["authenticatorSelection"] =
+  {
+    userVerification: "required",
+    residentKey: defaultResidentKey,
+    authenticatorAttachment: "platform",
+  };
 
-export const defaultPublicKey: SPCPublicKeyCredentialCreationOptions = {
-  rp: defaultRp,
-  user: defaultUser,
-  challenge: sha3_256_challenge_bytes,
-  pubKeyCredParams: defaultPubKeyCredParams,
-  authenticatorSelection: defaultAuthenticatorSelection,
-  extensions: {
-    payment: {
-      isPayment: true,
-    },
-  },
-};
+export const generateDefaultPublicKey =
+  async (): Promise<SPCPublicKeyCredentialCreationOptions> => {
+    const { challenge } = await generateTestRawTxn();
+
+    return {
+      rp: defaultRp,
+      user: defaultUser,
+      challenge: challenge,
+      pubKeyCredParams: defaultPubKeyCredParams,
+      authenticatorSelection: defaultAuthenticatorSelection,
+      extensions: {},
+    };
+  };
+
+export const generateDefaultSPCPublicKey =
+  async (): Promise<SPCPublicKeyCredentialCreationOptions> => {
+    const { challenge } = await generateTestRawTxn();
+
+    return {
+      rp: defaultRp,
+      user: defaultUser,
+      challenge: challenge,
+      pubKeyCredParams: defaultPubKeyCredParams,
+      authenticatorSelection: defaultAuthenticatorSelection,
+      extensions: {
+        payment: {
+          isPayment: true,
+        },
+      },
+    };
+  };
 
 /**
  * Creates a demo WebAuthn credential, optionally setting the 'payment'
@@ -94,8 +155,25 @@ export const defaultPublicKey: SPCPublicKeyCredentialCreationOptions = {
  * @param {SPCPublicKeyCredentialCreationOptions} publicKey
  */
 export async function createCredential(
-  publicKey: SPCPublicKeyCredentialCreationOptions = defaultPublicKey
+  publicKey?: SPCPublicKeyCredentialCreationOptions
 ): Promise<Credential | null> {
+  const defaultPublicKey = await generateDefaultPublicKey();
+
+  const publicKeyCreationOptions: SPCPublicKeyCredentialCreationOptions = {
+    ...defaultPublicKey,
+    ...publicKey,
+  };
+
+  return await navigator.credentials.create({
+    publicKey: publicKeyCreationOptions,
+  });
+}
+
+export async function createSPCCredential(
+  publicKey?: SPCPublicKeyCredentialCreationOptions
+): Promise<Credential | null> {
+  const defaultPublicKey = await generateDefaultSPCPublicKey();
+
   const publicKeyCreationOptions: SPCPublicKeyCredentialCreationOptions = {
     ...defaultPublicKey,
     ...publicKey,
@@ -112,8 +190,10 @@ export async function createCredential(
 export async function getCredential(
   allowCredentials: PublicKeyCredentialDescriptor[]
 ) {
+  const { challenge } = await generateTestRawTxn();
+
   const publicKey: PublicKeyCredentialRequestOptions = {
-    challenge: sha3_256_challenge_bytes,
+    challenge,
     allowCredentials: allowCredentials,
     extensions: {},
   };
@@ -395,7 +475,17 @@ export function base64ToArray(input: string) {
  * Converts a base64Url encoded string into a Uint8Array.
  */
 export function base64UrlToArray(input: string) {
-  return base64url.toBuffer(input);
+  const base64 = toBase64(input)
+  return base64ToArray(base64);
+}
+
+export function toBase64(base64url: string): string {
+  // We this to be a string so we can do .replace on it. If it's
+  // already a string, this is a noop.
+  base64url = base64url.toString();
+  return padString(base64url)
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
 }
 
 /**
