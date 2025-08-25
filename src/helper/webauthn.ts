@@ -1,62 +1,75 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/** Some of this code is sourced from https://rsolomakhin.github.io/pr/spc/ */
+/** 部分代码来源于 https://rsolomakhin.github.io/pr/spc/ */
 
 import { sha3_256 } from "@noble/hashes/sha3";
-import { p256 } from "@noble/curves/p256";
+import { p256 } from '@noble/curves/nist.js';
 import base64url from "base64url";
 import {
   AccountAddress,
-  AptosConfig,
-  Aptos,
-  parseTypeTag,
-  U64,
-  Network,
-  getSigningMessage,
 } from "@aptos-labs/ts-sdk";
 import padString from "./padString";
 
-const aptosConfig = new AptosConfig({
-  network: Network.DEVNET,
-});
-
-const aptosClient = new Aptos(aptosConfig);
-const APTOS_COIN = "0x1::aptos_coin::AptosCoin";
-
 export const generateTestRawTxn = async () => {
-  const account = AccountAddress.fromString("0x1");
-  const { rawTransaction } = await aptosClient.generateTransaction({
-    sender: account,
-    data: {
-      function: "0x1::aptos_account::transfer_coins",
-      typeArguments: [parseTypeTag(APTOS_COIN)],
-      functionArguments: [account, new U64(1000)],
-    },
-    options: {
-      accountSequenceNumber: 0,
-      gasUnitPrice: 100,
-      maxGasAmount: 1000,
-      expireTimestamp: new Date("December 17, 1995 03:24:00").getTime(),
-    },
-  });
-
-  const signingMessage = getSigningMessage(rawTransaction);
-  const challenge = sha3_256.create().update(signingMessage).digest();
-
-  return { rawTransaction, signingMessage, challenge };
+  const privateKey = new Uint8Array(32);
+  crypto.getRandomValues(privateKey);
+  
+  // 创建一个简单的测试挑战
+  const challenge = new Uint8Array(32);
+  crypto.getRandomValues(challenge);
+  
+  // 创建一个模拟的交易对象
+  const rawTransaction = {
+    bcsToBytes: () => challenge
+  };
+  
+  return { challenge: challenge.buffer, rawTransaction };
 };
 
 export const p256SignatureFromDER = (derSig: Uint8Array) => {
-  let sig = p256.Signature.fromDER(derSig);
+  let sig = p256.Signature.fromBytes(derSig, 'der');
   
-  // makes the signature canonical
-  sig = sig.normalizeS();
-  const rawSig = sig.toCompactRawBytes();
+  const rawSig = sig.toBytes('compact');
   return rawSig;
 };
 
 export async function isSpcAvailable() {
-  const spcAvailable = Boolean(PaymentRequest);
-  return spcAvailable;
+  try {
+    // 检查 PaymentRequest API 是否可用
+    if (!window.PaymentRequest) {
+      return false;
+    }
+    
+    // 检查浏览器是否支持 SPC - 通过尝试创建 SPC 请求来检测
+    const testData = {
+      challenge: new Uint8Array([1, 2, 3, 4]),  // 测试挑战
+      rpId: "localhost",                          // 依赖方 ID
+      credentialIds: [new Uint8Array([1, 2, 3, 4])],  // 测试凭证 ID
+      instrument: {
+        displayName: "Test",                      // 测试显示名称
+        icon: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwxOSA5TDEzLjUgMTQuNzRMMTUgMjFMMTIgMTcuNzdMOSAyMUwxMC41IDE0Ljc0TDUgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjMDA3QUZGIi8+Cjwvc3ZnPgo=",  // 测试图标
+      },
+      payeeOrigin: "https://localhost",           // 收款方来源
+      extensions: {},                             // 扩展
+    };
+    
+    const supportedInstruments = [
+      { supportedMethods: "secure-payment-confirmation", data: testData },  // 支持的支付方法
+    ];
+    
+    const details = {
+      total: {
+        label: "Total",                           // 总计标签
+        amount: { currency: "USD", value: "1.00" },  // 金额
+      },
+    };
+    
+    // 尝试创建 PaymentRequest 对象来检测 SPC 支持
+    new PaymentRequest(supportedInstruments, details);
+    return true;
+  } catch (error) {
+    console.warn("SPC 可用性检查失败:", error);
+    return false;
+  }
 }
 
 export type SPCAuthenticationExtensionsClientInputs =
@@ -80,39 +93,38 @@ export type SPCPublicKeyCredentialCreationOptions = Omit<
 >;
 
 export const defaultRp: PublicKeyCredentialRpEntity = {
-  id: window.location.hostname,
-  name: window.location.origin,
+  id: window.location.hostname,  // 依赖方 ID
+  name: window.location.origin,  // 依赖方名称
 };
 
 export const defaultPubKeyCredParams: PublicKeyCredentialParameters[] = [
   {
     type: "public-key",
-    alg: -7, // ECDSA, not supported on Windows.
+    alg: -7, // ECDSA，Windows 不支持
   },
 ];
 
 export const defaultUser = {
-  // Set an understandable 'username' in case the WebAuthn UX displays it
-  // (e.g., the Passkeys UX on Chrome MacOS 108+). This is for display ONLY,
-  // and has no bearing on SPC's functionality in general. (For example, it
-  // is NOT shown in the SPC transaction dialog.)
+  // 设置一个可理解的用户名，以防 WebAuthn UX 显示它
+  // (例如，Chrome MacOS 108+ 上的 Passkeys UX)。这仅用于显示，
+  // 对 SPC 的功能没有影响。(例如，它不会在 SPC 交易对话框中显示。)
   name: "Andrew",
   displayName: "",
-  // TODO look at this later
+  // TODO 稍后查看这个
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   id: Uint8Array.from(String(Math.random() * 99999999)),
 };
 
 export const defaultResidentKey: ResidentKeyRequirement = spcSupportsPreferred()
-  ? "preferred"
-  : "required";
+  ? "preferred"   // 首选
+  : "required";   // 必需
 
 export const defaultAuthenticatorSelection: SPCPublicKeyCredentialCreationOptions["authenticatorSelection"] =
   {
-    userVerification: "required",
-    residentKey: defaultResidentKey,
-    authenticatorAttachment: "platform",
+    userVerification: "required",      // 用户验证必需
+    residentKey: defaultResidentKey,   // 常驻密钥
+    authenticatorAttachment: "platform", // 平台认证器
   };
 
 export const generateDefaultPublicKey =
@@ -148,9 +160,9 @@ export const generateDefaultSPCPublicKey =
   };
 
 /**
- * Creates a demo WebAuthn credential, optionally setting the 'payment'
- * extension. The created credential will always have the name 'Andrew ····
- * 1234', matching the demo payment instrument used in authentication.
+ * 创建一个演示 WebAuthn 凭证，可选择设置 'payment' 扩展
+ * 创建的凭证将始终具有名称 'Andrew ···· 1234'，
+ * 与认证中使用的演示支付工具匹配
  *
  * @param {SPCPublicKeyCredentialCreationOptions} publicKey
  */
@@ -185,7 +197,7 @@ export async function createSPCCredential(
 }
 
 /**
- * This is a barebones implementation of the getCredential method
+ * 这是 getCredential 方法的基础实现
  */
 export async function getCredential(
   allowCredentials: PublicKeyCredentialDescriptor[]
@@ -193,9 +205,9 @@ export async function getCredential(
   const { challenge } = await generateTestRawTxn();
 
   const publicKey: PublicKeyCredentialRequestOptions = {
-    challenge,
-    allowCredentials: allowCredentials,
-    extensions: {},
+    challenge: challenge as ArrayBuffer,                    // 挑战
+    allowCredentials: allowCredentials,  // 允许的凭证
+    extensions: {},              // 扩展
   };
 
   return (await navigator.credentials.get({
@@ -204,21 +216,20 @@ export async function getCredential(
 }
 
 /**
- * Returns whether or not SPC supports residentKey 'preferred' (instead of just
- * 'required'). There is unfortunately no way to feature detect this, so we
- * have to do a version check.
+ * 返回 SPC 是否支持 residentKey 'preferred'（而不仅仅是 'required'）
+ * 不幸的是，没有方法可以检测此功能，所以我们必须进行版本检查
  *
- * @return {boolean} true if SPC supports 'preferred' for the residentKey
- *     parameter, false otherwise.
+ * @return {boolean} 如果 SPC 支持 residentKey 参数的 'preferred' 则为 true，
+ *     否则为 false
  */
 export function spcSupportsPreferred() {
-  // This will be true for not just Chrome but also Edge/etc, but that's fine.
+  // 这不仅对 Chrome 为 true，对 Edge 等也为 true，但这没关系
   const match = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
   if (!match) return false;
 
   const version = parseInt(match[2], 10);
-  // https://crrev.com/130fada41 landed in 106.0.5228.0, but we assume that any
-  // 106 will do for simplicity.
+  // https://crrev.com/130fada41 在 106.0.5228.0 中落地，但为简单起见，
+  // 我们假设任何 106 版本都可以
   return version >= 106;
 }
 
@@ -226,11 +237,11 @@ export function spcSupportsPreferred() {
  * @see https://www.w3.org/TR/secure-payment-confirmation/#dictdef-paymentcredentialinstrument
  */
 export interface PaymentCredentialInstrument {
-  // required USVString displayName;
+  // 必需的 USVString 显示名称
   displayName: string;
-  // required USVString icon;
+  // 必需的 USVString 图标
   icon: string;
-  // boolean iconMustBeShown = true;
+  // 布尔值 iconMustBeShown = true
   iconMustBeShown?: boolean;
 }
 
@@ -239,33 +250,33 @@ export interface PaymentCredentialInstrument {
  */
 export interface SecurePaymentConfirmationRequest {
   challenge: Uint8Array;
-  // required USVString rpId;
+  // 必需的 USVString 依赖方 ID
   rpId: string;
-  // required sequence<BufferSource> credentialIds;
+  // 必需的 sequence<BufferSource> 凭证 ID 序列
   credentialIds: Uint8Array[];
-  // required PaymentCredentialInstrument instrument;
+  // 必需的 PaymentCredentialInstrument 支付凭证工具
   instrument: PaymentCredentialInstrument;
-  // unsigned long timeout;
+  // 无符号长整型超时时间
   timeout?: number;
-  // USVString payeeName;
+  // USVString 收款方名称
   payeeName?: string;
-  // USVString payeeOrigin;
+  // USVString 收款方来源
   payeeOrigin?: string;
-  // AuthenticationExtensionsClientInputs extensions;
+  // AuthenticationExtensionsClientInputs 认证扩展客户端输入
   extensions: Record<string, unknown>;
-  // sequence<USVString> locale;
+  // sequence<USVString> 语言环境序列
   locale?: string[];
-  // boolean showOptOut;
+  // 布尔值 显示退出选项
   showOptOut?: boolean;
 }
 
 /**
- * Creates a PaymentRequest object for SPC.
+ * 为 SPC 创建 PaymentRequest 对象
  *
- * @param {SecurePaymentConfirmationRequest} spcData - the input SPC data. The
- *     credentialIds field *MUST* be set. Any other SecurePaymentConfirmationRequest
- *     fields not set in this object will be initialized to a default value.
- * @return {PaymentRequest} The payment request object.
+ * @param {SecurePaymentConfirmationRequest} spcData - 输入的 SPC 数据。credentialIds 字段
+ *     *必须* 设置。此对象中未设置的任何其他 SecurePaymentConfirmationRequest
+ *     字段将初始化为默认值。
+ * @return {PaymentRequest} 支付请求对象
  */
 export function createSPCPaymentRequest(
   spcData: SecurePaymentConfirmationRequest
@@ -279,18 +290,18 @@ export function createSPCPaymentRequest(
 
   // https://w3c.github.io/secure-payment-confirmation/#sctn-securepaymentconfirmationrequest-dictionary
   if (spcData.challenge === undefined)
-    spcData.challenge = new TextEncoder().encode("network_data");
-  if (spcData.rpId === undefined) spcData.rpId = window.location.hostname;
+    spcData.challenge = new TextEncoder().encode("network_data");  // 网络数据
+  if (spcData.rpId === undefined) spcData.rpId = window.location.hostname;  // 依赖方 ID
   if (spcData.instrument === undefined)
-    spcData.instrument = { displayName: "Andrew ···· 1234", icon: "" };
+    spcData.instrument = { displayName: "Andrew ···· 1234", icon: "" };  // 默认支付工具
   if (spcData.instrument.icon === undefined)
     spcData.instrument.icon =
-      "https://rsolomakhin.github.io/pr/spc/troy-alt-logo.png";
-  if (spcData.timeout === undefined) spcData.timeout = 60000;
-  // We only set a default payeeOrigin if *both* payeeName and payeeOrigin are
-  // not set, as the spec deliberately allows either/or to be null.
+      "https://rsolomakhin.github.io/pr/spc/troy-alt-logo.png";  // 默认图标
+  if (spcData.timeout === undefined) spcData.timeout = 60000;  // 默认超时时间
+  // 我们只在 *两个* payeeName 和 payeeOrigin 都未设置时才设置默认的 payeeOrigin，
+  // 因为规范故意允许其中一个或两个都为 null
   if (!("payeeName" in spcData) && !("payeeOrigin" in spcData))
-    spcData.payeeOrigin = window.location.origin;
+    spcData.payeeOrigin = window.location.origin;  // 默认收款方来源
 
   const supportedInstruments = [
     { supportedMethods: "secure-payment-confirmation", data: spcData },
@@ -309,7 +320,7 @@ export function createSPCPaymentRequest(
 }
 
 /**
- * Converts a PaymentResponse or a PublicKeyCredential into a string.
+ * 将 PaymentResponse 或 PublicKeyCredential 转换为字符串
  */
 export function objectToString(input: Record<string, any>) {
   return JSON.stringify(objectToDictionary(input), undefined, 2);
@@ -321,10 +332,9 @@ export enum Encoding {
 }
 
 /**
- * Converts a PaymentResponse or a PublicKeyCredential into a dictionary.
- * WARNING: base64Url encoding DOES NOT WORK AS EXPECTED
- *          use something like https://www.base64url.com/ to manually encode
- *          for now
+ * 将 PaymentResponse 或 PublicKeyCredential 转换为字典
+ * 警告：base64Url 编码不能按预期工作
+ *       暂时使用类似 https://www.base64url.com/ 来手动编码
  */
 export function objectToDictionary(
   input: Record<string, any>,
@@ -465,14 +475,14 @@ export function objectToDictionary(
 }
 
 /**
- * Converts a base64 encoded string into Unit8Array.
+ * 将 base64 编码的字符串转换为 Uint8Array
  */
 export function base64ToArray(input: string) {
   return Uint8Array.from(atob(input), (c) => c.charCodeAt(0));
 }
 
 /**
- * Converts a base64Url encoded string into a Uint8Array.
+ * 将 base64Url 编码的字符串转换为 Uint8Array
  */
 export function base64UrlToArray(input: string) {
   const base64 = toBase64(input)
@@ -480,16 +490,16 @@ export function base64UrlToArray(input: string) {
 }
 
 export function toBase64(base64url: string): string {
-  // We this to be a string so we can do .replace on it. If it's
-  // already a string, this is a noop.
+  // 我们需要这是一个字符串，这样我们就可以对它进行 .replace 操作。如果它
+  // 已经是一个字符串，这就是一个空操作。
   base64url = base64url.toString();
   return padString(base64url)
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
+      .replace(/-/g, "+")    // 将 - 替换为 +
+      .replace(/_/g, "/");   // 将 _ 替换为 /
 }
 
 /**
- * Converts an ArrayBuffer into a base64 encoded string.
+ * 将 ArrayBuffer 转换为 base64 编码的字符串
  */
 export function arrayBufferToBase64(input: ArrayBuffer) {
   return btoa(arrayBufferToBase64String(input));
@@ -502,8 +512,121 @@ export function arrayBufferToBase64Url(input: ArrayBuffer) {
 }
 
 /**
- * Converts an ArrayBuffer into a base64 string.
+ * 将 ArrayBuffer 转换为 base64 字符串
  */
 export function arrayBufferToBase64String(input: ArrayBuffer) {
   return String.fromCharCode(...new Uint8Array(input));
+}
+
+/**
+ * 将 Uint8Array 转换为十六进制字符串
+ */
+export function arrayToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 从 WebAuthn 凭证中提取公钥
+ */
+export function extractPublicKeyFromCredential(credential: PublicKeyCredential): {
+  publicKeyBase64: string;
+  publicKeyHex: string;
+  aptosAddress: string;
+} | null {
+  try {
+    // 获取认证对象
+    const attestationResponse = credential.response as AuthenticatorAttestationResponse;
+    const attestationObject = attestationResponse.attestationObject;
+    
+    // 将 ArrayBuffer 转换为 Uint8Array
+    const attestationBytes = new Uint8Array(attestationObject);
+    
+    // 提取公钥（简化版本）
+    const publicKeyBytes = attestationBytes.slice(-65); // 通常公钥在末尾
+    const publicKeyBase64 = arrayBufferToBase64(publicKeyBytes.buffer);
+    const publicKeyHex = arrayToHex(publicKeyBytes);
+    
+    // 使用 Aptos SDK 计算地址
+    const aptosAddress = calculateAptosAddressFromPublicKey(publicKeyBytes);
+    
+    return {
+      publicKeyBase64,
+      publicKeyHex,
+      aptosAddress
+    };
+  } catch (error) {
+    console.error('提取公钥失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 使用 Aptos SDK 从公钥计算地址
+ */
+export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): string {
+  try {
+    // 移除可能的压缩前缀（0x04 表示未压缩）
+    let keyBytes = publicKeyBytes;
+    // if (publicKeyBytes[0] === 0x04) {
+    //   keyBytes = publicKeyBytes.slice(1);
+    // }
+    
+    // 确保是 64 字节（32 + 32）
+    if (keyBytes.length !== 65) {
+      throw new Error(`公钥长度不正确: ${keyBytes.length}`);
+    }
+
+    // 最后加一个 0x02
+    keyBytes = new Uint8Array([...keyBytes, 0x02]);
+    
+    // 使用 SHA3-256 哈希公钥
+    const hashedPublicKey = sha3_256.create().update(keyBytes).digest();
+    
+    // 转换为 Aptos 地址格式 - 使用正确的 API
+    // 将字节数组转换为十六进制字符串，然后使用 fromString
+    const hexString = "0x" + arrayToHex(hashedPublicKey);
+    const address = AccountAddress.fromString(hexString);
+    
+    return address.toString();
+  } catch (error) {
+    console.error('计算 Aptos 地址失败:', error);
+    return '计算失败';
+  }
+}
+
+/**
+ * 获取凭证的完整信息
+ */
+export function getCredentialInfo(credential: PublicKeyCredential): {
+  id: string;
+  type: string;
+  publicKey: {
+    base64: string;
+    hex: string;
+    aptosAddress: string;
+  };
+  rawData: any;
+} | null {
+  try {
+    const credentialObject = objectToDictionary(credential, Encoding.base64Url);
+    const publicKeyInfo = extractPublicKeyFromCredential(credential);
+    
+    if (!publicKeyInfo) {
+      return null;
+    }
+    
+    return {
+      id: credentialObject.rawId || '',
+      type: credentialObject.type || '',
+      publicKey: {
+        base64: publicKeyInfo.publicKeyBase64,
+        hex: publicKeyInfo.publicKeyHex,
+        aptosAddress: publicKeyInfo.aptosAddress
+      },
+      rawData: credentialObject
+    };
+  } catch (error) {
+    console.error('获取凭证信息失败:', error);
+    return null;
+  }
 }
