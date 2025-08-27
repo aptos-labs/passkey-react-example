@@ -3,11 +3,24 @@
 
 import { sha3_256 } from "@noble/hashes/sha3";
 import { p256 } from '@noble/curves/nist.js';
-import base64url from "base64url";
+import { Buffer } from "buffer";
 import {
   AccountAddress,
+  AptosConfig,
+  Aptos,
+  Network,
+  Serializer,
+  Hex,
+  generateSigningMessageForTransaction,
 } from "@aptos-labs/ts-sdk";
-import padString from "./padString";
+import { RegistrationResponseJSON} from "@simplewebauthn/server";
+import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
+// Aptos Devnet 配置
+const aptosConfig = new AptosConfig({
+  network: Network.DEVNET,
+});
+
+const aptosClient = new Aptos(aptosConfig);
 
 export const generateTestRawTxn = async () => {
   const privateKey = new Uint8Array(32);
@@ -320,278 +333,50 @@ export function createSPCPaymentRequest(
 }
 
 /**
- * 将 PaymentResponse 或 PublicKeyCredential 转换为字符串
- */
-export function objectToString(input: Record<string, any>) {
-  return JSON.stringify(objectToDictionary(input), undefined, 2);
-}
-
-export enum Encoding {
-  base64 = "base64",
-  base64Url = "base64Url",
-}
-
-/**
- * 将 PaymentResponse 或 PublicKeyCredential 转换为字典
- * 警告：base64Url 编码不能按预期工作
- *       暂时使用类似 https://www.base64url.com/ 来手动编码
- */
-export function objectToDictionary(
-  input: Record<string, any>,
-  encoding = Encoding.base64
-) {
-  const output: Record<string, any> = {};
-  if (input.requestId) {
-    output.requestId = input.requestId;
-  }
-  if (input.id) {
-    output.id = input.id;
-  }
-  if (input.rawId && input.rawId.constructor === ArrayBuffer) {
-    output.rawId = arrayBufferToBase64Url(input.rawId);
-  }
-  if (
-    input.response &&
-    (input.response.constructor === AuthenticatorAttestationResponse ||
-      input.response.constructor === AuthenticatorAssertionResponse ||
-      input.response.constructor === Object)
-  ) {
-    output.response = objectToDictionary(input.response);
-  }
-  if (
-    input.attestationObject &&
-    input.attestationObject.constructor === ArrayBuffer
-  ) {
-    output.attestationObject =
-      encoding === Encoding.base64
-        ? arrayBufferToBase64(input.attestationObject)
-        : arrayBufferToBase64Url(input.attestationObject);
-  }
-  if (
-    input.authenticatorData &&
-    input.authenticatorData.constructor === ArrayBuffer
-  ) {
-    output.authenticatorData =
-      encoding === Encoding.base64
-        ? arrayBufferToBase64(input.authenticatorData)
-        : arrayBufferToBase64Url(input.authenticatorData);
-  }
-  if (
-    input.authenticatorData &&
-    input.authenticatorData.constructor === String
-  ) {
-    output.authenticatorData =
-      encoding === Encoding.base64
-        ? input.authenticatorData
-        : base64url.fromBase64(input.authenticatorData.toString());
-  }
-  if (
-    input.clientDataJSON &&
-    input.clientDataJSON.constructor === ArrayBuffer
-  ) {
-    const stringifiedClientDataJSON =
-      encoding === Encoding.base64
-        ? arrayBufferToBase64String(input.clientDataJSON)
-        : arrayBufferToBase64Url(input.authenticatorData);
-
-    output.clientDataJSON = stringifiedClientDataJSON;
-  }
-  if (input.clientDataJSON && input.clientDataJSON.constructor === String) {
-    output.clientDataJSON = atob(input.clientDataJSON.toString());
-  }
-  if (input.info) {
-    output.info = objectToDictionary(input.info);
-  }
-  if (input.signature && input.signature.constructor === ArrayBuffer) {
-    output.signature =
-      encoding === Encoding.base64
-        ? arrayBufferToBase64(input.signature)
-        : arrayBufferToBase64Url(input.signature);
-  }
-  if (input.signature && input.signature.constructor === String) {
-    output.signature = input.signature;
-  }
-  if (input.userHandle && input.userHandle.constructor === ArrayBuffer) {
-    output.userHandle =
-      encoding === Encoding.base64
-        ? arrayBufferToBase64(input.userHandle)
-        : arrayBufferToBase64Url(input.userHandle);
-  }
-  if (input.userHandle && input.userHandle.constructor === String) {
-    output.userHandle = input.userHandle;
-  }
-  if (input.type) {
-    output.type = input.type;
-  }
-  if (input.methodName) {
-    output.methodName = input.methodName;
-  }
-  if (input.details) {
-    output.details = objectToDictionary(input.details);
-  }
-  if (input.appid_extension) {
-    output.appid_extension = input.appid_extension;
-  }
-  if (input.challenge) {
-    output.challenge = input.challenge;
-  }
-  if (input.echo_appid_extension) {
-    output.echo_appid_extension = input.echo_appid_extension;
-  }
-  if (input.echo_prf) {
-    output.echo_prf = input.echo_prf;
-  }
-  if (input.prf_not_evaluated) {
-    output.prf_not_evaluated = input.prf_not_evaluated;
-  }
-  if (input.prf_results) {
-    output.prf_results = objectToDictionary(input.prf_results);
-  }
-  if (input.user_handle) {
-    output.user_handle = input.user_handle;
-  }
-  if (input.authenticator_data) {
-    output.authenticator_data = input.authenticator_data;
-  }
-  if (input.client_data_json) {
-    output.client_data_json = atob(input.client_data_json);
-  }
-  if (input.shippingAddress) {
-    output.shippingAddress = input.shippingAddress;
-  }
-  if (input.shippingOption) {
-    output.shippingOption = input.shippingOption;
-  }
-  if (input.payerName) {
-    output.payerName = input.payerName;
-  }
-  if (input.payerEmail) {
-    output.payerEmail = input.payerEmail;
-  }
-  if (input.payerPhone) {
-    output.payerPhone = input.payerPhone;
-  }
-  return output;
-}
-
-/**
- * 将 base64 编码的字符串转换为 Uint8Array
- */
-export function base64ToArray(input: string) {
-  return Uint8Array.from(atob(input), (c) => c.charCodeAt(0));
-}
-
-/**
- * 将 base64Url 编码的字符串转换为 Uint8Array
- */
-export function base64UrlToArray(input: string) {
-  const base64 = toBase64(input)
-  return base64ToArray(base64);
-}
-
-export function toBase64(base64url: string): string {
-  // 我们需要这是一个字符串，这样我们就可以对它进行 .replace 操作。如果它
-  // 已经是一个字符串，这就是一个空操作。
-  base64url = base64url.toString();
-  return padString(base64url)
-      .replace(/-/g, "+")    // 将 - 替换为 +
-      .replace(/_/g, "/");   // 将 _ 替换为 /
-}
-
-/**
- * 将 ArrayBuffer 转换为 base64 编码的字符串
- */
-export function arrayBufferToBase64(input: ArrayBuffer) {
-  return btoa(arrayBufferToBase64String(input));
-}
-
-export function arrayBufferToBase64Url(input: ArrayBuffer) {
-  const base64 = arrayBufferToBase64(input);
-  const base64Url = base64url.fromBase64(base64);
-  return base64Url;
-}
-
-/**
- * 将 ArrayBuffer 转换为 base64 字符串
- */
-export function arrayBufferToBase64String(input: ArrayBuffer) {
-  return String.fromCharCode(...new Uint8Array(input));
-}
-
-/**
- * 将 Uint8Array 转换为十六进制字符串
- */
-export function arrayToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * 从 WebAuthn 凭证中提取公钥
- */
-export function extractPublicKeyFromCredential(credential: PublicKeyCredential): {
-  publicKeyBase64: string;
-  publicKeyHex: string;
-  aptosAddress: string;
-} | null {
-  try {
-    // 获取认证对象
-    const attestationResponse = credential.response as AuthenticatorAttestationResponse;
-    const attestationObject = attestationResponse.attestationObject;
-    
-    // 将 ArrayBuffer 转换为 Uint8Array
-    const attestationBytes = new Uint8Array(attestationObject);
-    
-    // 提取公钥（简化版本）
-    const publicKeyBytes = attestationBytes.slice(-65); // 通常公钥在末尾
-    const publicKeyBase64 = arrayBufferToBase64(publicKeyBytes.buffer);
-    const publicKeyHex = arrayToHex(publicKeyBytes);
-    
-    // 使用 Aptos SDK 计算地址
-    const aptosAddress = calculateAptosAddressFromPublicKey(publicKeyBytes);
-    
-    return {
-      publicKeyBase64,
-      publicKeyHex,
-      aptosAddress
-    };
-  } catch (error) {
-    console.error('提取公钥失败:', error);
-    return null;
-  }
-}
-
-/**
  * 使用 Aptos SDK 从公钥计算地址
  */
 export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): string {
   try {
-    // 移除可能的压缩前缀（0x04 表示未压缩）
-    let keyBytes = publicKeyBytes;
-    // if (publicKeyBytes[0] === 0x04) {
-    //   keyBytes = publicKeyBytes.slice(1);
-    // }
+    // 验证公钥格式：应该是 65 字节 (0x04 + 32字节x + 32字节y)
+    if (publicKeyBytes.length !== 65) {
+      throw new Error(`公钥长度不正确: ${publicKeyBytes.length}，应该是 65 字节`);
+    }
     
-    // 确保是 64 字节（32 + 32）
-    if (keyBytes.length !== 65) {
-      throw new Error(`公钥长度不正确: ${keyBytes.length}`);
+    // 验证公钥格式：第一个字节应该是 0x04 (未压缩的 EC 公钥)
+    if (publicKeyBytes[0] !== 0x04) {
+      throw new Error(`公钥格式不正确: 第一个字节应该是 0x04，实际是 0x${publicKeyBytes[0].toString(16)}`);
     }
 
-    // 最后加一个 0x02
-    keyBytes = new Uint8Array([...keyBytes, 0x02]);
-    
+    const serializer = new Serializer();
+    serializer.serializeBytes(publicKeyBytes);
+    const keyBytes = new Uint8Array(
+      [2, ...serializer.toUint8Array(), 2]
+    )
     // 使用 SHA3-256 哈希公钥
     const hashedPublicKey = sha3_256.create().update(keyBytes).digest();
     
-    // 转换为 Aptos 地址格式 - 使用正确的 API
-    // 将字节数组转换为十六进制字符串，然后使用 fromString
-    const hexString = "0x" + arrayToHex(hashedPublicKey);
+    // 转换为 Aptos 地址格式
+    const hexString = "0x" + Buffer.from(hashedPublicKey).toString("hex");
     const address = AccountAddress.fromString(hexString);
+
+    console.log("address", address.toString());
     
     return address.toString();
   } catch (error) {
     console.error('计算 Aptos 地址失败:', error);
     return '计算失败';
   }
+}
+
+export function parsePublicKey(response: RegistrationResponseJSON): Uint8Array {
+
+  console.log("response", response);
+  const authData = Buffer.from(response.response.authenticatorData!, "base64");
+  console.log("authData", authData);
+  const parsedAuthenticatorData = parseAuthenticatorData(authData);
+  // Convert from COSE
+  const publicKey = convertCOSEtoPKCS(parsedAuthenticatorData.credentialPublicKey!);
+  return publicKey;
 }
 
 /**
@@ -608,25 +393,183 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
   rawData: any;
 } | null {
   try {
-    const credentialObject = objectToDictionary(credential, Encoding.base64Url);
-    const publicKeyInfo = extractPublicKeyFromCredential(credential);
-    
-    if (!publicKeyInfo) {
-      return null;
-    }
-    
+    const publickey = parsePublicKey(credential.toJSON());
+
+    console.log("publickey", new Hex(publickey).toString());
     return {
-      id: credentialObject.rawId || '',
-      type: credentialObject.type || '',
+      id: Buffer.from(credential.rawId).toString("base64"),
+      type: credential.type || '',
       publicKey: {
-        base64: publicKeyInfo.publicKeyBase64,
-        hex: publicKeyInfo.publicKeyHex,
-        aptosAddress: publicKeyInfo.aptosAddress
+        base64: Buffer.from(publickey).toString("base64"),
+        hex: Buffer.from(publickey).toString("hex"),
+        aptosAddress: calculateAptosAddressFromPublicKey(publickey)
       },
-      rawData: credentialObject
+      rawData: publickey
     };
   } catch (error) {
     console.error('获取凭证信息失败:', error);
     return null;
+  }
+}
+
+/**
+ * 在 Aptos Devnet 上执行模拟转账
+ */
+export async function simulateDevnetTransfer(
+  credentialId?: string
+) {
+
+  if (!credentialId) {
+    alert("请先创建一个 Passkey 凭证");
+    return;
+  }
+  try {
+
+    // 使用 passkey
+    // 读取当前公钥计算地址
+    
+
+    // 创建账户
+  
+
+    // 获取账户地址
+    const savedCredential = window.localStorage.getItem("credentialData");
+    
+      if (!savedCredential) {
+        throw new Error("请先创建一个 Passkey 凭证");
+      }
+      const credentialData = JSON.parse(savedCredential);
+      const senderAddress = credentialData.publicKey.aptosAddress;
+
+    // 创建接收地址（这里使用一个测试地址）
+    const receiverAddress = "0x1234567890123456789012345678901234567890123456789012345678901234";
+    
+    // 转账金额（0.001 APT）
+    const amount = 1000; // 最小单位
+    
+    console.log("=== Devnet 转账模拟 ===");
+    console.log("发送方地址:", senderAddress);
+    console.log("接收方地址:", receiverAddress);
+    console.log("转账金额:", amount, "最小单位");
+    
+
+    console.log(aptosClient)
+    // build raw transaction
+
+    const rawTxn = await aptosClient.transaction.build.simple({
+      sender: senderAddress,
+      data: {
+        function: "0x1::aptos_account::transfer",
+        functionArguments: [
+          receiverAddress,
+          amount,
+        ],
+        typeArguments: [],
+      }
+    });
+    console.log("rawTxn", rawTxn);
+    
+    // 计算 challenge
+
+    const message = generateSigningMessageForTransaction(rawTxn);
+    console.log("message", message);
+
+    const challenge = sha3_256(message);
+    console.log("challenge", challenge);
+
+    // 签名
+
+    const allowedCredentials: PublicKeyCredentialDescriptor[] = [
+      {
+        type: "public-key",
+        id: Buffer.from(credentialId, "base64"),
+      },
+    ];
+
+    const publicKey: PublicKeyCredentialRequestOptions = {
+      challenge: challenge.buffer,                    // 挑战 - 转换为 ArrayBuffer
+      allowCredentials: allowedCredentials,  // 允许的凭证
+      extensions: {},              // 扩展
+    };
+  
+    let credential = await navigator.credentials.get({
+      publicKey,
+    });
+
+    console.log("credential", credential);
+
+    if (!credential) {
+      throw new Error("获取凭证失败");
+    }
+
+    const { clientDataJSON, authenticatorData, signature } = (credential as PublicKeyCredential).response as AuthenticatorAssertionResponse;
+
+    const signatureCompact = p256SignatureFromDER(new Uint8Array(signature));
+    console.log("signatureCompact", signatureCompact);
+
+
+    // AccountAuthenticatorSingleKey
+
+    // 0x04 +  0x02 + AnyPublickey + AnySignature
+
+    // AnyPublickey serialize 为 0x02 + serializeBytes (publickey bytes)
+
+    // AnySignature serialize 为 0x02 + 0x00 + signature bytes + authenticator Data bytes + clientDataJson Bytes
+  
+    const serializer = new Serializer();
+    serializer.serializeU32AsUleb128(2);
+    // AssertionSignatureVariant.Secp256r1 == 0 
+    serializer.serializeU32AsUleb128(0);
+    serializer.serializeBytes(signatureCompact);
+    serializer.serializeBytes(Buffer.from(authenticatorData));
+    serializer.serializeBytes(Buffer.from(clientDataJSON));
+
+    const serializedSignature = serializer.toUint8Array();
+
+    console.log("serializedSignature", serializedSignature);
+
+    // sumbit transaction
+
+    const raw_bytes = rawTxn.bcsToHex();
+    // 拼接
+
+    const ser = new Serializer();
+    ser.serializeU32AsUleb128(2);
+    ser.serializeU32AsUleb128(65);
+    ser.serializeFixedBytes(Buffer.from(credentialData.publicKey.hex, "hex"));
+
+    const serializedPublickey = ser.toUint8Array();
+  
+    const ser2 = new Serializer();
+    ser2.serializeU32AsUleb128(4);
+    ser2.serializeU32AsUleb128(2);
+    const bytes = ser2.toUint8Array();
+    
+
+    const serializedAuthenticator = new Uint8Array([...bytes, ...serializedPublickey, ...serializedSignature]);
+    
+    const signed_bytes = new Uint8Array([...raw_bytes.toUint8Array().slice(0, -1),
+      ...serializedAuthenticator
+    ]);
+    
+    console.log("signed_bytes", Buffer.from(signed_bytes).toString("hex"));
+
+
+    console.log("raw_bytes", raw_bytes.toString());
+
+    console.log("faTransfer", await (await fetch(
+      "https://fullnode.devnet.aptoslabs.com/v1/transactions",
+      {
+          method: "POST",
+          headers: {
+              "Content-Type": "application/x.aptos.signed_transaction+bcs",
+          },
+          body: signed_bytes
+      }
+  )).json());
+  } catch (error) {
+    console.error("转账模拟失败:", error);
+    alert(`转账模拟失败: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   }
 }
