@@ -15,12 +15,51 @@ import {
 } from "@aptos-labs/ts-sdk";
 import { RegistrationResponseJSON} from "@simplewebauthn/server";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
-// Aptos Devnet 配置
-const aptosConfig = new AptosConfig({
-  network: Network.DEVNET,
-});
 
-const aptosClient = new Aptos(aptosConfig);
+// 网络配置类型
+interface NetworkConfig {
+  name: string;
+  network: Network;
+  fullnodeUrl: string;
+  faucetUrl: string | null;
+  explorerUrl: string;
+}
+// 网络配置
+export const NETWORKS: Record<string, NetworkConfig> = {
+  DEVNET: {
+    name: "Devnet",
+    network: Network.DEVNET,
+    fullnodeUrl: "https://fullnode.devnet.aptoslabs.com",
+    faucetUrl: "https://faucet.devnet.aptoslabs.com",
+    explorerUrl: "https://explorer.aptoslabs.com/account",
+  },
+  TESTNET: {
+    name: "Testnet", 
+    network: Network.TESTNET,
+    fullnodeUrl: "https://fullnode.testnet.aptoslabs.com",
+    faucetUrl: "https://faucet.testnet.aptoslabs.com",
+    explorerUrl: "https://explorer.aptoslabs.com/account",
+  },
+  MAINNET: {
+    name: "Mainnet",
+    network: Network.MAINNET,
+    fullnodeUrl: "https://fullnode.mainnet.aptoslabs.com",
+    faucetUrl: null, // 主网没有水龙头
+    explorerUrl: "https://explorer.aptoslabs.com/account",
+  }
+};
+
+// 默认使用 Devnet
+export let currentNetwork = NETWORKS.DEVNET;
+export let aptosClient = new Aptos(new AptosConfig({ network: currentNetwork.network }));
+
+// 切换网络的函数
+export function switchNetwork(networkKey: keyof typeof NETWORKS) {
+  currentNetwork = NETWORKS[networkKey];
+  aptosClient = new Aptos(new AptosConfig({ network: currentNetwork.network }));
+  console.log(`已切换到 ${currentNetwork.name} 网络`);
+  return currentNetwork;
+}
 
 export const generateTestRawTxn = async () => {
   const privateKey = new Uint8Array(32);
@@ -413,10 +452,13 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
 }
 
 /**
- * 在 Aptos Devnet 上执行模拟转账
+ * 在 Aptos 网络上执行模拟转账
  */
-export async function simulateDevnetTransfer(
-  credentialId?: string
+export async function simulateTransfer(
+  credentialId?: string,
+  senderAddress?: string,
+  receiverAddress?: string,
+  amount?: number
 ) {
 
   if (!credentialId) {
@@ -435,36 +477,39 @@ export async function simulateDevnetTransfer(
     // 获取账户地址
     const savedCredential = window.localStorage.getItem("credentialData");
     
-      if (!savedCredential) {
-        throw new Error("请先创建一个 Passkey 凭证");
-      }
-      const credentialData = JSON.parse(savedCredential);
-      const senderAddress = credentialData.publicKey.aptosAddress;
-
-    // 创建接收地址（这里使用一个测试地址）
-    const receiverAddress = "0x1234567890123456789012345678901234567890123456789012345678901234";
+    if (!savedCredential) {
+      throw new Error("请先创建一个 Passkey 凭证");
+    }
+    const credentialData = JSON.parse(savedCredential);
     
-    // 转账金额（0.001 APT）
-    const amount = 1000; // 最小单位
+    // 使用传入的参数或默认值
+    const finalSenderAddress = senderAddress || credentialData.publicKey.aptosAddress;
+    const finalReceiverAddress = receiverAddress || "0x1234567890123456789012345678901234567890123456789012345678901234";
+    const finalAmount = amount || 1000; // 默认 0.001 APT (1000 最小单位)
     
-    console.log("=== Devnet 转账模拟 ===");
-    console.log("发送方地址:", senderAddress);
-    console.log("接收方地址:", receiverAddress);
-    console.log("转账金额:", amount, "最小单位");
+    console.log(`=== ${currentNetwork.name} 转账模拟 ===`);
+    console.log("发送方地址:", finalSenderAddress);
+    console.log("接收方地址:", finalReceiverAddress);
+    console.log("转账金额:", finalAmount, "最小单位");
+    console.log("网络:", currentNetwork.name);
     
 
     console.log(aptosClient)
     // build raw transaction
 
     const rawTxn = await aptosClient.transaction.build.simple({
-      sender: senderAddress,
+      sender: finalSenderAddress,
       data: {
         function: "0x1::aptos_account::transfer",
         functionArguments: [
-          receiverAddress,
-          amount,
+          finalReceiverAddress,
+          finalAmount,
         ],
         typeArguments: [],
+      },
+      options: {
+        maxGasAmount: 2000,
+        gasUnitPrice: 100
       }
     });
     console.log("rawTxn", rawTxn);
@@ -487,7 +532,7 @@ export async function simulateDevnetTransfer(
     ];
 
     const publicKey: PublicKeyCredentialRequestOptions = {
-      challenge: challenge.buffer,                    // 挑战 - 转换为 ArrayBuffer
+      challenge: challenge.buffer as ArrayBuffer,                    // 挑战 - 转换为 ArrayBuffer
       allowCredentials: allowedCredentials,  // 允许的凭证
       extensions: {},              // 扩展
     };
@@ -499,7 +544,7 @@ export async function simulateDevnetTransfer(
     console.log("credential", credential);
 
     if (!credential) {
-      throw new Error("获取凭证失败");
+      throw new Error("Failed to get credential");
     }
 
     const { clientDataJSON, authenticatorData, signature } = (credential as PublicKeyCredential).response as AuthenticatorAssertionResponse;
@@ -557,8 +602,8 @@ export async function simulateDevnetTransfer(
 
     console.log("raw_bytes", raw_bytes.toString());
 
-    console.log("faTransfer", await (await fetch(
-      "https://fullnode.devnet.aptoslabs.com/v1/transactions",
+    const response = await fetch(
+      `${currentNetwork.fullnodeUrl}/v1/transactions`,
       {
           method: "POST",
           headers: {
@@ -566,10 +611,129 @@ export async function simulateDevnetTransfer(
           },
           body: signed_bytes
       }
-  )).json());
+    );
+    
+    const result = await response.json();
+    console.log("faTransfer", result);
+    
+    // 返回交易哈希
+    if (result.hash) {
+      return result.hash;
+    } else {
+      throw new Error("Failed to get transaction hash");
+    }
   } catch (error) {
-    console.error("转账模拟失败:", error);
-    alert(`转账模拟失败: ${error instanceof Error ? error.message : String(error)}`);
+    console.error("Transfer simulation failed:", error);
     throw error;
   }
+}
+
+/**
+ * 检查交易状态
+ */
+export async function checkTransactionStatus(transactionHash: string): Promise<string> {
+  try {
+    const response = await fetch(
+      `${currentNetwork.fullnodeUrl}/v1/transactions/by_hash/${transactionHash}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const transaction = await response.json();
+    console.log("Transaction response:", transaction);
+    
+    // Aptos 交易状态检查逻辑
+    if (transaction.success === true) {
+      return "Transaction successfully on-chain";
+    } else if (transaction.success === false) {
+      return `Transaction failed: ${transaction.vm_status || 'Unknown error'}`;
+    } else {
+      // 检查其他可能的成功标志
+      if (transaction.vm_status === "Executed successfully") {
+        return "Transaction successfully on-chain";
+      } else if (transaction.vm_status && transaction.vm_status !== "Executed successfully") {
+        return `Transaction failed: ${transaction.vm_status}`;
+      } else {
+        // 如果没有明确的状态，检查交易是否存在于链上
+        if (transaction.hash) {
+          return "Transaction successfully on-chain";
+        } else {
+          return "Transaction status unknown";
+        }
+      }
+    }
+  } catch (error) {
+    console.error("检查交易状态失败:", error);
+    throw error;
+  }
+}
+
+/**
+ * 带超时的循环交易状态检查
+ */
+export async function checkTransactionStatusWithTimeout(transactionHash: string): Promise<string> {
+  const maxAttempts = 10; // 10秒超时
+  const intervalMs = 1000; // 1秒检查一次
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`第 ${attempt} 次检查交易状态...`);
+      
+      const response = await fetch(
+        `${currentNetwork.fullnodeUrl}/v1/transactions/by_hash/${transactionHash}`
+      );
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          // 交易还未上链，继续等待
+          if (attempt < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+            continue;
+          } else {
+            return "Transaction check timeout: Not on-chain within 10 seconds";
+          }
+        } else {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+      }
+      
+      const transaction = await response.json();
+      console.log(`Transaction response (attempt ${attempt}):`, transaction);
+      
+      // Aptos 交易状态检查逻辑
+      if (transaction.success === true) {
+        return "Transaction successfully on-chain";
+      } else if (transaction.success === false) {
+        return `Transaction failed: ${transaction.vm_status || 'Unknown error'}`;
+      } else {
+        // 检查其他可能的成功标志
+        if (transaction.vm_status === "Executed successfully") {
+          return "Transaction successfully on-chain";
+        } else if (transaction.vm_status && transaction.vm_status !== "Executed successfully") {
+          return `Transaction failed: ${transaction.vm_status}`;
+        } else {
+          // 如果没有明确的状态，检查交易是否存在于链上
+          if (transaction.hash) {
+            return "Transaction successfully on-chain";
+          } else {
+            return "Transaction status unknown";
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error(`第 ${attempt} 次检查失败:`, error);
+      
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+        continue;
+      } else {
+        return `Transaction check failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+  }
+  
+  return "Transaction check timeout";
 }
