@@ -497,7 +497,7 @@ export async function simulateTransfer(
     console.log(aptosClient)
     // build raw transaction
 
-    const rawTxn = await aptosClient.transaction.build.simple({
+    const simpleTxn = await aptosClient.transaction.build.simple({
       sender: finalSenderAddress,
       data: {
         function: "0x1::aptos_account::transfer",
@@ -512,11 +512,11 @@ export async function simulateTransfer(
         gasUnitPrice: 100
       }
     });
-    console.log("rawTxn", rawTxn);
+    console.log("rawTxn", simpleTxn.rawTransaction);
     
     // 计算 challenge
 
-    const message = generateSigningMessageForTransaction(rawTxn);
+    const message = generateSigningMessageForTransaction(simpleTxn);
     console.log("message", message);
 
     const challenge = sha3_256(message);
@@ -575,7 +575,9 @@ export async function simulateTransfer(
 
     // sumbit transaction
 
-    const raw_bytes = rawTxn.bcsToHex();
+    const raw_bytes = simpleTxn.rawTransaction.bcsToBytes();
+
+    
     // 拼接
 
     const ser = new Serializer();
@@ -593,7 +595,7 @@ export async function simulateTransfer(
 
     const serializedAuthenticator = new Uint8Array([...bytes, ...serializedPublickey, ...serializedSignature]);
     
-    const signed_bytes = new Uint8Array([...raw_bytes.toUint8Array().slice(0, -1),
+    const signed_bytes = new Uint8Array([...raw_bytes,
       ...serializedAuthenticator
     ]);
     
