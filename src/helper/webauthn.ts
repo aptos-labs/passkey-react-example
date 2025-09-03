@@ -16,6 +16,7 @@ import {
   AccountAuthenticatorSingleKey,
   AnyPublicKey,
   AnySignature,
+  AuthenticationKey,
 } from "@aptos-labs/ts-sdk";
 import { RegistrationResponseJSON} from "@simplewebauthn/server";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
@@ -391,6 +392,10 @@ export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): 
     if (publicKeyBytes[0] !== 0x04) {
       throw new Error(`公钥格式不正确: 第一个字节应该是 0x04，实际是 0x${publicKeyBytes[0].toString(16)}`);
     }
+
+    let publicKey = new Secp256r1PublicKey(publicKeyBytes);
+    let authKey = AuthenticationKey.fromPublicKey({publicKey});
+    console.log("authKey",authKey.derivedAddress().toString())
 
     const serializer = new Serializer();
     serializer.serializeBytes(publicKeyBytes);
