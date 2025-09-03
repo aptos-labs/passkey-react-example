@@ -8,7 +8,6 @@ import {
   AptosConfig,
   Aptos,
   Network,
-  Serializer,
   Hex,
   generateSigningMessageForTransaction,
   TransactionAuthenticatorSingleSender,
@@ -16,11 +15,12 @@ import {
   AnyPublicKey,
   AnySignature,
   AuthenticationKey,
+  Deserializer,
+  WebAuthnSignature,
 } from "@aptos-labs/ts-sdk";
 import { RegistrationResponseJSON} from "@simplewebauthn/server";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
 import { Secp256r1PublicKey } from "@aptos-labs/ts-sdk";
-import { Secp256r1SignatureBase } from "@aptos-labs/ts-sdk";
 
 // 网络配置类型
 interface NetworkConfig {
@@ -449,44 +449,6 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
   }
 }
 
-class WebAuthnSignature extends Secp256r1SignatureBase {
-
-  signature: Uint8Array<ArrayBufferLike>;
-
-  authenticatorData: ArrayBuffer;
-
-  clientDataJSON: ArrayBuffer;
-
-  constructor(signature: Uint8Array, authenticatorData: ArrayBuffer, clientDataJSON: ArrayBuffer) {
-    super();
-    this.signature = signature;
-    this.authenticatorData = authenticatorData;
-    this.clientDataJSON = clientDataJSON;
-  }
-
-  toUint8Array(){
-    return this.signature;
-  } 
-  serialize(serializer: Serializer){
-    serializer.serializeU32AsUleb128(0); 
-    serializer.serializeBytes(this.signature);
-    serializer.serializeBytes(new Uint8Array(this.authenticatorData));
-    serializer.serializeBytes(new Uint8Array(this.clientDataJSON));
-    return serializer.toUint8Array();
-  }
-  bcsToBytes(){
-    const serializer = new Serializer();
-    this.serialize(serializer);
-    return serializer.toUint8Array();
-  }
-  bcsToHex(){
-    return Hex.fromHexInput(this.bcsToBytes());
-  }
-  toStringWithoutPrefix(){
-    return Hex.fromHexInput(this.bcsToBytes()).toString();
-  }
-}
-
 /**
  * 在 Aptos 网络上执行模拟转账
  */
@@ -593,7 +555,7 @@ export async function simulateTransfer(
       new AccountAuthenticatorSingleKey(new AnyPublicKey(
         new Secp256r1PublicKey(Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array()),
       ),
-      new AnySignature(new WebAuthnSignature(signatureCompact, authenticatorData, clientDataJSON))
+      new AnySignature(new WebAuthnSignature(signatureCompact, new Uint8Array(authenticatorData), new Uint8Array(clientDataJSON)))
     ),
     );
     console.log("transactionAuthenticator", transactionAuthenticator.bcsToHex().toString());
@@ -648,25 +610,42 @@ export async function simulateTransfer(
       ...transactionAuthenticator.bcsToBytes()
     ]);
     
-    console.log("signed_bytes", Buffer.from(signed_bytes).toString("hex"));
+    console.log("signed_bytes", TransactionAuthenticatorSingleSender.load(new Deserializer(transactionAuthenticator.bcsToBytes())));
 
 
-    console.log("raw_bytes", raw_bytes.toString());
+    const s = new AnySignature(new WebAuthnSignature(signatureCompact, new Uint8Array(authenticatorData), new Uint8Array(clientDataJSON)));
 
-    const response = await fetch(
-      `${currentNetwork.fullnodeUrl}/v1/transactions`,
-      {
-          method: "POST",
-          headers: {
-              "Content-Type": "application/x.aptos.signed_transaction+bcs",
-          },
-          body: signed_bytes
-      }
-    );
+    const signed_bytes2 = s.bcsToBytes();
+
+    console.log("signed_bytes2", s.bcsToHex().toString());
+
+    console.log("signed_bytes2", AnySignature.deserialize(new Deserializer(signed_bytes2)));
+   
+   
+    // const response = await fetch(
+    //   `${currentNetwork.fullnodeUrl}/v1/transactions`,
+    //   {
+    //       method: "POST",
+    //       headers: {
+    //           "Content-Type": "application/x.aptos.signed_transaction+bcs",
+    //       },
+    //       body: signed_bytes
+    //   }
+    // );
     
-    const result = await response.json();
-    console.log("faTransfer", result);
+    // const result = await response.json();
+    // console.log("faTransfer", result);
     
+    const result = await aptosClient.transaction.submit.simple({
+      transaction: simpleTxn,
+      senderAuthenticator: new AccountAuthenticatorSingleKey(new AnyPublicKey(
+        new Secp256r1PublicKey(Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array()),
+      ),
+      new AnySignature(new WebAuthnSignature(signatureCompact, new Uint8Array(authenticatorData), new Uint8Array(clientDataJSON))),
+    )});
+
+    
+
     // 返回交易哈希
     if (result.hash) {
       return result.hash;
