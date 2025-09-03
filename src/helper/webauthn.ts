@@ -12,9 +12,15 @@ import {
   Serializer,
   Hex,
   generateSigningMessageForTransaction,
+  TransactionAuthenticatorSingleSender,
+  AccountAuthenticatorSingleKey,
+  AnyPublicKey,
+  AnySignature,
 } from "@aptos-labs/ts-sdk";
 import { RegistrationResponseJSON} from "@simplewebauthn/server";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
+import { Secp256r1PublicKey } from "@aptos-labs/ts-sdk";
+import { Secp256r1SignatureBase } from "@aptos-labs/ts-sdk";
 
 // 网络配置类型
 interface NetworkConfig {
@@ -451,6 +457,44 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
   }
 }
 
+class WebAuthnSignature extends Secp256r1SignatureBase {
+
+  signature: Uint8Array<ArrayBufferLike>;
+
+  authenticatorData: ArrayBuffer;
+
+  clientDataJSON: ArrayBuffer;
+
+  constructor(signature: Uint8Array, authenticatorData: ArrayBuffer, clientDataJSON: ArrayBuffer) {
+    super();
+    this.signature = signature;
+    this.authenticatorData = authenticatorData;
+    this.clientDataJSON = clientDataJSON;
+  }
+
+  toUint8Array(){
+    return this.signature;
+  } 
+  serialize(serializer: Serializer){
+    serializer.serializeU32AsUleb128(0); 
+    serializer.serializeBytes(this.signature);
+    serializer.serializeBytes(new Uint8Array(this.authenticatorData));
+    serializer.serializeBytes(new Uint8Array(this.clientDataJSON));
+    return serializer.toUint8Array();
+  }
+  bcsToBytes(){
+    const serializer = new Serializer();
+    this.serialize(serializer);
+    return serializer.toUint8Array();
+  }
+  bcsToHex(){
+    return Hex.fromHexInput(this.bcsToBytes());
+  }
+  toStringWithoutPrefix(){
+    return Hex.fromHexInput(this.bcsToBytes()).toString();
+  }
+}
+
 /**
  * 在 Aptos 网络上执行模拟转账
  */
@@ -553,6 +597,15 @@ export async function simulateTransfer(
     console.log("signatureCompact", signatureCompact);
 
 
+    const transactionAuthenticator = new TransactionAuthenticatorSingleSender(
+      new AccountAuthenticatorSingleKey(new AnyPublicKey(
+        new Secp256r1PublicKey(Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array()),
+      ),
+      new AnySignature(new WebAuthnSignature(signatureCompact, authenticatorData, clientDataJSON))
+    ),
+    );
+    console.log("transactionAuthenticator", transactionAuthenticator.bcsToHex().toString());
+
     // AccountAuthenticatorSingleKey
 
     // 0x04 +  0x02 + AnyPublickey + AnySignature
@@ -561,17 +614,21 @@ export async function simulateTransfer(
 
     // AnySignature serialize 为 0x02 + 0x00 + signature bytes + authenticator Data bytes + clientDataJson Bytes
   
-    const serializer = new Serializer();
-    serializer.serializeU32AsUleb128(2);
-    // AssertionSignatureVariant.Secp256r1 == 0 
-    serializer.serializeU32AsUleb128(0);
-    serializer.serializeBytes(signatureCompact);
-    serializer.serializeBytes(Buffer.from(authenticatorData));
-    serializer.serializeBytes(Buffer.from(clientDataJSON));
+    // const serializer = new Serializer();
+    // serializer.serializeU32AsUleb128(2); 
+    // // AssertionSignatureVariant.Secp256r1 == 0 
+    // serializer.serializeU32AsUleb128(0);
+    // serializer.serializeBytes(signatureCompact);
+    // serializer.serializeBytes(Buffer.from(authenticatorData));
+    // serializer.serializeBytes(Buffer.from(clientDataJSON));
 
-    const serializedSignature = serializer.toUint8Array();
+    // const serializedSignature = serializer.toUint8Array();
 
-    console.log("serializedSignature", serializedSignature);
+    // console.log("serializedSignature", Hex.fromHexInput(serializedSignature).toString());
+    // "0x0200408e1fb635101d278ec029cf5b4f378e714665b293307bc9bc721cf5b41bab804cf5715945ac0a71c036c3aafdb4ce792bc4e9600bc8d920d96f39a7bad49297fd2549960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d0000000086017b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2256696a74337a594b4f46506e58382d50527a53504972447337763343314a4a7457696552636d7130317941222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a35313733222c2263726f73734f726967696e223a66616c73657d"
+    // "0x04020241046b0a616914a7f3dbd38de7c6e199e90e1bd5fbbc0cb64fcf4028993759e3380c287362f2d8da83e0c6277120dcb83a2fe76f073622363168121899bbc8ea97c20200408e1fb635101d278ec029cf5b4f378e714665b293307bc9bc721cf5b41bab804cf5715945ac0a71c036c3aafdb4ce792bc4e9600bc8d920d96f39a7bad49297fd2549960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d0000000086017b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2256696a74337a594b4f46506e58382d50527a53504972447337763343314a4a7457696552636d7130317941222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a35313733222c2263726f73734f726967696e223a66616c73657d"
+
+    // console.log( transactionAuthenticator.bcsToHex().toString())
 
     // sumbit transaction
 
@@ -580,23 +637,23 @@ export async function simulateTransfer(
     
     // 拼接
 
-    const ser = new Serializer();
-    ser.serializeU32AsUleb128(2);
-    ser.serializeU32AsUleb128(65);
-    ser.serializeFixedBytes(Buffer.from(credentialData.publicKey.hex, "hex"));
+    // const ser = new Serializer();
+    // ser.serializeU32AsUleb128(2);
+    // ser.serializeU32AsUleb128(65);
+    // ser.serializeFixedBytes(Buffer.from(credentialData.publicKey.hex, "hex"));
 
-    const serializedPublickey = ser.toUint8Array();
+    // const serializedPublickey = ser.toUint8Array();
   
-    const ser2 = new Serializer();
-    ser2.serializeU32AsUleb128(4);
-    ser2.serializeU32AsUleb128(2);
-    const bytes = ser2.toUint8Array();
+    // const ser2 = new Serializer();
+    // ser2.serializeU32AsUleb128(4);
+    // ser2.serializeU32AsUleb128(2);
+    // const bytes = ser2.toUint8Array();
     
 
-    const serializedAuthenticator = new Uint8Array([...bytes, ...serializedPublickey, ...serializedSignature]);
+    // const serializedAuthenticator = new Uint8Array([...bytes, ...serializedPublickey, ...serializedSignature]);
     
     const signed_bytes = new Uint8Array([...raw_bytes,
-      ...serializedAuthenticator
+      ...transactionAuthenticator.bcsToBytes()
     ]);
     
     console.log("signed_bytes", Buffer.from(signed_bytes).toString("hex"));
