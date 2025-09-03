@@ -5,7 +5,6 @@ import { sha3_256 } from "@noble/hashes/sha3";
 import { p256 } from '@noble/curves/nist.js';
 import { Buffer } from "buffer";
 import {
-  AccountAddress,
   AptosConfig,
   Aptos,
   Network,
@@ -397,21 +396,9 @@ export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): 
     let authKey = AuthenticationKey.fromPublicKey({publicKey});
     console.log("authKey",authKey.derivedAddress().toString())
 
-    const serializer = new Serializer();
-    serializer.serializeBytes(publicKeyBytes);
-    const keyBytes = new Uint8Array(
-      [2, ...serializer.toUint8Array(), 2]
-    )
-    // 使用 SHA3-256 哈希公钥
-    const hashedPublicKey = sha3_256.create().update(keyBytes).digest();
     
-    // 转换为 Aptos 地址格式
-    const hexString = "0x" + Buffer.from(hashedPublicKey).toString("hex");
-    const address = AccountAddress.fromString(hexString);
-
-    console.log("address", address.toString());
     
-    return address.toString();
+    return authKey.derivedAddress().toString();
   } catch (error) {
     console.error('计算 Aptos 地址失败:', error);
     return '计算失败';
