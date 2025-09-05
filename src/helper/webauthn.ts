@@ -184,7 +184,7 @@ export const defaultAuthenticatorSelection: SPCPublicKeyCredentialCreationOption
   {
     userVerification: "required",      // 用户验证必需
     residentKey: defaultResidentKey,   // 常驻密钥
-    authenticatorAttachment: "platform", // 平台认证器
+    authenticatorAttachment: "cross-platform", // 平台认证器
   };
 
 export const generateDefaultPublicKey =
