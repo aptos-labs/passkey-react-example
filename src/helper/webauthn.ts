@@ -17,6 +17,8 @@ import {
   AuthenticationKey,
   Deserializer,
   WebAuthnSignature,
+  AccountAddress,
+  Serializer,
 } from "@aptos-labs/ts-sdk";
 import { RegistrationResponseJSON} from "@simplewebauthn/server";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
@@ -395,8 +397,26 @@ export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): 
     let publicKey = new Secp256r1PublicKey(publicKeyBytes);
     let authKey = AuthenticationKey.fromPublicKey({publicKey});
     console.log("authKey",authKey.derivedAddress().toString())
-
     
+    const serializer = new Serializer();
+    serializer.serializeBytes(publicKeyBytes);
+    const keyBytes = new Uint8Array(
+      [2, ...serializer.toUint8Array(), 2]
+    )
+    // 使用 SHA3-256 哈希公钥
+    const hashedPublicKey = sha3_256.create().update(keyBytes).digest();
+
+    // 转换为 Aptos 地址格式
+    const hexString = "0x" + Buffer.from(hashedPublicKey).toString("hex");
+    const address = AccountAddress.fromString(hexString);
+
+    console.log("address", address.toString());
+    console.log("authKey", authKey.derivedAddress().toString());
+
+
+    return address.toString();
+
+
     
     return authKey.derivedAddress().toString();
   } catch (error) {
