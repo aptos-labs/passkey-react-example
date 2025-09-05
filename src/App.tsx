@@ -37,12 +37,13 @@ function App() {
   // 通过凭证注册仪式创建 passkey
   const createPasskey = async () => {
     try {
-      const credential = (await createCredential()) as PublicKeyCredential;
+
+      const credential = await createCredential();
       
       console.log("credential", credential);
 
       // 获取完整的凭证信息
-      const credentialInfo = getCredentialInfo(credential);
+      const credentialInfo = getCredentialInfo(credential as PublicKeyCredential);
       
       if (credentialInfo) {
         console.log("==== Passkey 创建成功 ===");

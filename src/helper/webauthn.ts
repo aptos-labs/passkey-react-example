@@ -425,10 +425,9 @@ export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): 
   }
 }
 
-export function parsePublicKey(response: RegistrationResponseJSON): Uint8Array {
-
+export function parsePublicKey(response: PublicKeyCredential): Uint8Array {
   console.log("response", response);
-  const authData = Buffer.from(response.response.authenticatorData!, "base64");
+  const authData = Buffer.from((new Uint8Array((response.response as AuthenticatorAttestationResponse).getAuthenticatorData())));
   console.log("authData", authData);
   const parsedAuthenticatorData = parseAuthenticatorData(authData);
   // Convert from COSE
@@ -450,7 +449,9 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
   rawData: any;
 } | null {
   try {
-    const publickey = parsePublicKey(credential.toJSON());
+    const response = credential;
+    console.log("response", response);
+    const publickey = parsePublicKey(response);
 
     console.log("publickey", new Hex(publickey).toString());
     return {
