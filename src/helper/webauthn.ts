@@ -471,22 +471,6 @@ export function normalizeS(
   return normalized.toBytes(toFormat);
 }
 
-export function webauthnDerSigToAptosRaw(derSig: ArrayBuffer): Uint8Array {
-  const P256_ORDER = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
-// 1) 解析 DER，得到 r、s 的原始数值
-  const sig = p256.Signature.fromBytes(new Uint8Array(derSig), 'der').normalizeS();
-  let compact = sig.toBytes('compact'); // r||s, 长度 64
-  // 2) 提取 s，检查是否需要 low-S
-  let sBig = bytesToNumberBE(compact.slice(32, 64));
-  const halfN = P256_ORDER >> 1n;
-  if (sBig > halfN) {
-      sBig = P256_ORDER - sBig;
-      const sCanon = numberToBytesBE(sBig, 32);
-      compact.set(sCanon, 32);
-  }
-  return compact; // 64B raw r||s（canonical）
-}
-
 /**
  * 在 Aptos 网络上执行模拟转账
  */
@@ -602,81 +586,7 @@ export async function simulateTransfer(
     );
     console.log("transactionAuthenticator", transactionAuthenticator.bcsToHex().toString());
 
-    // AccountAuthenticatorSingleKey
-
-    // 0x04 +  0x02 + AnyPublickey + AnySignature
-
-    // AnyPublickey serialize 为 0x02 + serializeBytes (publickey bytes)
-
-    // AnySignature serialize 为 0x02 + 0x00 + signature bytes + authenticator Data bytes + clientDataJson Bytes
-  
-    // const serializer = new Serializer();
-    // serializer.serializeU32AsUleb128(2); 
-    // // AssertionSignatureVariant.Secp256r1 == 0 
-    // serializer.serializeU32AsUleb128(0);
-    // serializer.serializeBytes(signatureCompact);
-    // serializer.serializeBytes(Buffer.from(authenticatorData));
-    // serializer.serializeBytes(Buffer.from(clientDataJSON));
-
-    // const serializedSignature = serializer.toUint8Array();
-
-    // console.log("serializedSignature", Hex.fromHexInput(serializedSignature).toString());
-    // "0x0200408e1fb635101d278ec029cf5b4f378e714665b293307bc9bc721cf5b41bab804cf5715945ac0a71c036c3aafdb4ce792bc4e9600bc8d920d96f39a7bad49297fd2549960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d0000000086017b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2256696a74337a594b4f46506e58382d50527a53504972447337763343314a4a7457696552636d7130317941222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a35313733222c2263726f73734f726967696e223a66616c73657d"
-    // "0x04020241046b0a616914a7f3dbd38de7c6e199e90e1bd5fbbc0cb64fcf4028993759e3380c287362f2d8da83e0c6277120dcb83a2fe76f073622363168121899bbc8ea97c20200408e1fb635101d278ec029cf5b4f378e714665b293307bc9bc721cf5b41bab804cf5715945ac0a71c036c3aafdb4ce792bc4e9600bc8d920d96f39a7bad49297fd2549960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d0000000086017b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2256696a74337a594b4f46506e58382d50527a53504972447337763343314a4a7457696552636d7130317941222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a35313733222c2263726f73734f726967696e223a66616c73657d"
-
-    // console.log( transactionAuthenticator.bcsToHex().toString())
-
     // sumbit transaction
-
-    const raw_bytes = simpleTxn.rawTransaction.bcsToBytes();
-
-    
-    // 拼接
-
-    // const ser = new Serializer();
-    // ser.serializeU32AsUleb128(2);
-    // ser.serializeU32AsUleb128(65);
-    // ser.serializeFixedBytes(Buffer.from(credentialData.publicKey.hex, "hex"));
-
-    // const serializedPublickey = ser.toUint8Array();
-  
-    // const ser2 = new Serializer();
-    // ser2.serializeU32AsUleb128(4);
-    // ser2.serializeU32AsUleb128(2);
-    // const bytes = ser2.toUint8Array();
-    
-
-    // const serializedAuthenticator = new Uint8Array([...bytes, ...serializedPublickey, ...serializedSignature]);
-    
-    const signed_bytes = new Uint8Array([...raw_bytes,
-      ...transactionAuthenticator.bcsToBytes()
-    ]);
-    
-    console.log("signed_bytes", TransactionAuthenticatorSingleSender.load(new Deserializer(transactionAuthenticator.bcsToBytes())));
-
-
-    const s = new AnySignature(new WebAuthnSignature(signatureCompact, new Uint8Array(authenticatorData), new Uint8Array(clientDataJSON)));
-
-    const signed_bytes2 = s.bcsToBytes();
-
-    console.log("signed_bytes2", s.bcsToHex().toString());
-
-    console.log("signed_bytes2", AnySignature.deserialize(new Deserializer(signed_bytes2)));
-   
-   
-    // const response = await fetch(
-    //   `${currentNetwork.fullnodeUrl}/v1/transactions`,
-    //   {
-    //       method: "POST",
-    //       headers: {
-    //           "Content-Type": "application/x.aptos.signed_transaction+bcs",
-    //       },
-    //       body: signed_bytes
-    //   }
-    // );
-    
-    // const result = await response.json();
-    // console.log("faTransfer", result);
     
     const result = await aptosClient.transaction.submit.simple({
       transaction: simpleTxn,
