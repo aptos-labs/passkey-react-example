@@ -3,6 +3,7 @@
 
 import { sha3_256 } from "@noble/hashes/sha3";
 import { p256 } from '@noble/curves/nist.js';
+import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
 import { Buffer } from "buffer";
 import {
   AptosConfig,
@@ -20,7 +21,6 @@ import {
   AccountAddress,
   Serializer,
 } from "@aptos-labs/ts-sdk";
-import { RegistrationResponseJSON} from "@simplewebauthn/server";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
 import { Secp256r1PublicKey } from "@aptos-labs/ts-sdk";
 
@@ -395,29 +395,8 @@ export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): 
     }
 
     let publicKey = new Secp256r1PublicKey(publicKeyBytes);
-    let authKey = AuthenticationKey.fromPublicKey({publicKey});
-    console.log("authKey",authKey.derivedAddress().toString())
-    
-    const serializer = new Serializer();
-    serializer.serializeBytes(publicKeyBytes);
-    const keyBytes = new Uint8Array(
-      [2, ...serializer.toUint8Array(), 2]
-    )
-    // 使用 SHA3-256 哈希公钥
-    const hashedPublicKey = sha3_256.create().update(keyBytes).digest();
-
-    // 转换为 Aptos 地址格式
-    const hexString = "0x" + Buffer.from(hashedPublicKey).toString("hex");
-    const address = AccountAddress.fromString(hexString);
-
-    console.log("address", address.toString());
-    console.log("authKey", authKey.derivedAddress().toString());
-
-
-    return address.toString();
-
-
-    
+    let authKey = publicKey.authKey();
+     
     return authKey.derivedAddress().toString();
   } catch (error) {
     console.error('计算 Aptos 地址失败:', error);
@@ -468,6 +447,44 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
     console.error('获取凭证信息失败:', error);
     return null;
   }
+}
+import type { ECDSA, ECDSASigFormat } from '@noble/curves/abstract/weierstrass';
+
+// ecdsaImpl 是你通过 ecdsa(Point, hash) 得到的实现对象
+export function normalizeS(
+  sigBytes: Uint8Array,
+  formFormat: ECDSASigFormat = 'compact',
+  toFormat: ECDSASigFormat = 'compact'
+): Uint8Array {
+  const sig = p256.Signature.fromBytes(sigBytes, formFormat);
+
+  // 已经是低 S，直接返回
+  if (!sig.hasHighS()) return sig.toBytes(toFormat);
+
+  // 归一化：s -> -s mod n（等价于 n - s）
+  const sLow = p256.Point.Fn.neg(sig.s);
+
+  // 如果是 recovered 签名，需要翻转 recovery 的最低位
+  const rec = sig.recovery != null ? (sig.recovery ^ 1) : undefined;
+
+  const normalized = new p256.Signature(sig.r, sLow, rec);
+  return normalized.toBytes(toFormat);
+}
+
+export function webauthnDerSigToAptosRaw(derSig: ArrayBuffer): Uint8Array {
+  const P256_ORDER = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+// 1) 解析 DER，得到 r、s 的原始数值
+  const sig = p256.Signature.fromBytes(new Uint8Array(derSig), 'der').normalizeS();
+  let compact = sig.toBytes('compact'); // r||s, 长度 64
+  // 2) 提取 s，检查是否需要 low-S
+  let sBig = bytesToNumberBE(compact.slice(32, 64));
+  const halfN = P256_ORDER >> 1n;
+  if (sBig > halfN) {
+      sBig = P256_ORDER - sBig;
+      const sCanon = numberToBytesBE(sBig, 32);
+      compact.set(sCanon, 32);
+  }
+  return compact; // 64B raw r||s（canonical）
 }
 
 /**
@@ -568,7 +585,11 @@ export async function simulateTransfer(
 
     const { clientDataJSON, authenticatorData, signature } = (credential as PublicKeyCredential).response as AuthenticatorAssertionResponse;
 
-    const signatureCompact = p256SignatureFromDER(new Uint8Array(signature));
+    console.log("clientDataJSON", Buffer.from(clientDataJSON).toString("utf-8"));
+    console.log("authenticatorData", Buffer.from(authenticatorData).toString("utf-8"));
+    console.log("signature", Buffer.from(signature).toString("utf-8"));
+
+    const signatureCompact = normalizeS(new Uint8Array(signature), 'der', 'compact');
     console.log("signatureCompact", signatureCompact);
 
 

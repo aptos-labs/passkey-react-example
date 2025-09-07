@@ -113,7 +113,7 @@ function App() {
     const allowedCredentials: PublicKeyCredentialDescriptor[] = [
       {
         type: "public-key",
-        id: Buffer.from(credentialId, "base64url"),
+        id: Buffer.from(credentialId, "base64"),
       },
     ];
 
