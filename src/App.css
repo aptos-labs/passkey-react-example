@@ -48,7 +48,170 @@
   color: #888;
 }
 
-/* 弹窗样式 */
+/* Demo description */
+.demo-description {
+  font-size: 1.1rem;
+  color: #666;
+  margin: 1rem 0 2rem 0;
+  line-height: 1.6;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Feature grid */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.feature-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.feature-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.feature-card h3 {
+  margin: 0 0 1rem 0;
+  color: #1e293b;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.feature-card p {
+  margin: 0 0 1.5rem 0;
+  color: #64748b;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.feature-button {
+  width: 100%;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+.feature-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+}
+
+.feature-button:active {
+  transform: translateY(0);
+}
+
+.feature-button.transfer-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.feature-button.transfer-button:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
+}
+
+/* Info section */
+.info-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.info-section h3 {
+  margin: 0 0 1rem 0;
+  color: #1e293b;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.info-section p {
+  margin: 0 0 1.5rem 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.benefits-list {
+  margin: 1.5rem 0;
+}
+
+.benefits-list h4 {
+  margin: 0 0 1rem 0;
+  color: #1e293b;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.benefits-list ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.benefits-list li {
+  margin: 0.75rem 0;
+  color: #475569;
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.benefits-list li strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.technical-info {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-top: 1.5rem;
+}
+
+.technical-info p {
+  margin: 0.5rem 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9rem;
+}
+
+.technical-info code {
+  background: #374151;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fbbf24;
+}
+
+/* Modal styles */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -186,7 +349,7 @@
   background-color: #4b5563;
 }
 
-/* 响应式设计 */
+/* Responsive design */
 @media (max-width: 640px) {
   .modal-content {
     width: 95%;
@@ -209,7 +372,7 @@
   }
 }
 
-/* 转账弹窗特定样式 */
+/* Transfer modal specific styles */
 .network-select {
   width: 100%;
   padding: 12px;
@@ -294,7 +457,7 @@
   transform: translateY(0);
 }
 
-/* 旋转动画 */
+/* Spinning animation */
 .spinner {
   display: inline-block;
   width: 16px;
@@ -310,7 +473,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* 状态显示样式 */
+/* Status display styles */
 .status-display {
   background-color: #f9fafb;
   border-radius: 6px;
@@ -383,4 +546,89 @@
 
 .explorer-button:active {
   transform: translateY(0);
+}
+
+/* Signature success modal specific styles */
+.success-message {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #10b981;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.success-message h3 {
+  margin: 0 0 12px 0;
+  color: #065f46;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.success-message p {
+  margin: 0;
+  color: #047857;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.signature-description {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.signature-description p {
+  margin: 0 0 8px 0;
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.signature-description p:last-child {
+  margin-bottom: 0;
+}
+
+.signature-description strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.copy-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Error modal styles */
+.error-modal {
+  max-width: 500px;
+}
+
+.error-modal .modal-header {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border-bottom: 1px solid #fca5a5;
+}
+
+.error-modal .modal-header h2 {
+  color: #991b1b;
+}
+
+.error-message {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.error-message p {
+  margin: 0;
+  color: #991b1b;
+  font-size: 1rem;
+  line-height: 1.5;
 }
