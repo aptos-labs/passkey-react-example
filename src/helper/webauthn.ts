@@ -179,7 +179,7 @@ export const defaultAuthenticatorSelection: SPCPublicKeyCredentialCreationOption
   {
     userVerification: "required",      // User verification required
     residentKey: defaultResidentKey,   // Resident key
-    authenticatorAttachment: "cross-platform", // Platform authenticator
+    authenticatorAttachment: "platform", // Platform authenticator
   };
 
 export const generateDefaultPublicKey =
