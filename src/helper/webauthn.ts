@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/** 部分代码来源于 https://rsolomakhin.github.io/pr/spc/ */
+/** Some code sourced from https://rsolomakhin.github.io/pr/spc/ */
 
 import { sha3_256 } from "@noble/hashes/sha3";
 import { p256 } from '@noble/curves/nist.js';
-import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
 import { Buffer } from "buffer";
 import {
   AptosConfig,
@@ -15,16 +14,12 @@ import {
   AccountAuthenticatorSingleKey,
   AnyPublicKey,
   AnySignature,
-  AuthenticationKey,
-  Deserializer,
   WebAuthnSignature,
-  AccountAddress,
-  Serializer,
-} from "@aptos-labs/ts-sdk";
+} from "@wgb5445/ts-sdk";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
-import { Secp256r1PublicKey } from "@aptos-labs/ts-sdk";
+import { Secp256r1PublicKey } from "@wgb5445/ts-sdk";
 
-// 网络配置类型
+// Network configuration type
 interface NetworkConfig {
   name: string;
   network: Network;
@@ -32,7 +27,7 @@ interface NetworkConfig {
   faucetUrl: string | null;
   explorerUrl: string;
 }
-// 网络配置
+// Network configuration
 export const NETWORKS: Record<string, NetworkConfig> = {
   DEVNET: {
     name: "Devnet",
@@ -52,20 +47,20 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     name: "Mainnet",
     network: Network.MAINNET,
     fullnodeUrl: "https://fullnode.mainnet.aptoslabs.com",
-    faucetUrl: null, // 主网没有水龙头
+    faucetUrl: null, // Mainnet has no faucet
     explorerUrl: "https://explorer.aptoslabs.com/account",
   }
 };
 
-// 默认使用 Devnet
+// Default to Devnet
 export let currentNetwork = NETWORKS.DEVNET;
 export let aptosClient = new Aptos(new AptosConfig({ network: currentNetwork.network }));
 
-// 切换网络的函数
+// Function to switch networks
 export function switchNetwork(networkKey: keyof typeof NETWORKS) {
   currentNetwork = NETWORKS[networkKey];
   aptosClient = new Aptos(new AptosConfig({ network: currentNetwork.network }));
-  console.log(`已切换到 ${currentNetwork.name} 网络`);
+  console.log(`Switched to ${currentNetwork.name} network`);
   return currentNetwork;
 }
 
@@ -73,11 +68,11 @@ export const generateTestRawTxn = async () => {
   const privateKey = new Uint8Array(32);
   crypto.getRandomValues(privateKey);
   
-  // 创建一个简单的测试挑战
+  // Create a simple test challenge
   const challenge = new Uint8Array(32);
   crypto.getRandomValues(challenge);
   
-  // 创建一个模拟的交易对象
+  // Create a mock transaction object
   const rawTransaction = {
     bcsToBytes: () => challenge
   };
@@ -94,40 +89,40 @@ export const p256SignatureFromDER = (derSig: Uint8Array) => {
 
 export async function isSpcAvailable() {
   try {
-    // 检查 PaymentRequest API 是否可用
+    // Check if PaymentRequest API is available
     if (!window.PaymentRequest) {
       return false;
     }
     
-    // 检查浏览器是否支持 SPC - 通过尝试创建 SPC 请求来检测
+    // Check if browser supports SPC - detect by trying to create SPC request
     const testData = {
-      challenge: new Uint8Array([1, 2, 3, 4]),  // 测试挑战
-      rpId: "localhost",                          // 依赖方 ID
-      credentialIds: [new Uint8Array([1, 2, 3, 4])],  // 测试凭证 ID
+      challenge: new Uint8Array([1, 2, 3, 4]),  // Test challenge
+      rpId: "localhost",                          // Relying Party ID
+      credentialIds: [new Uint8Array([1, 2, 3, 4])],  // Test credential ID
       instrument: {
-        displayName: "Test",                      // 测试显示名称
-        icon: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwxOSA5TDEzLjUgMTQuNzRMMTUgMjFMMTIgMTcuNzdMOSAyMUwxMC41IDE0Ljc0TDUgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjMDA3QUZGIi8+Cjwvc3ZnPgo=",  // 测试图标
+        displayName: "Test",                      // Test display name
+        icon: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwxOSA5TDEzLjUgMTQuNzRMMTUgMjFMMTIgMTcuNzdMOSAyMUwxMC41IDE0Ljc0TDUgOUwxMC45MSA4LjI2TDEyIDJaIiBmaWxsPSIjMDA3QUZGIi8+Cjwvc3ZnPgo=",  // Test icon
       },
-      payeeOrigin: "https://localhost",           // 收款方来源
-      extensions: {},                             // 扩展
+      payeeOrigin: "https://localhost",           // Payee origin
+      extensions: {},                             // Extensions
     };
     
     const supportedInstruments = [
-      { supportedMethods: "secure-payment-confirmation", data: testData },  // 支持的支付方法
+      { supportedMethods: "secure-payment-confirmation", data: testData },  // Supported payment methods
     ];
     
     const details = {
       total: {
-        label: "Total",                           // 总计标签
-        amount: { currency: "USD", value: "1.00" },  // 金额
+        label: "Total",                           // Total label
+        amount: { currency: "USD", value: "1.00" },  // Amount
       },
     };
     
-    // 尝试创建 PaymentRequest 对象来检测 SPC 支持
+    // Try to create PaymentRequest object to detect SPC support
     new PaymentRequest(supportedInstruments, details);
     return true;
   } catch (error) {
-    console.warn("SPC 可用性检查失败:", error);
+    console.warn("SPC availability check failed:", error);
     return false;
   }
 }
@@ -153,38 +148,38 @@ export type SPCPublicKeyCredentialCreationOptions = Omit<
 >;
 
 export const defaultRp: PublicKeyCredentialRpEntity = {
-  id: window.location.hostname,  // 依赖方 ID
-  name: window.location.origin,  // 依赖方名称
+  id: window.location.hostname,  // Relying Party ID
+  name: window.location.origin,  // Relying Party name
 };
 
 export const defaultPubKeyCredParams: PublicKeyCredentialParameters[] = [
   {
     type: "public-key",
-    alg: -7, // ECDSA，Windows 不支持
+    alg: -7, // ECDSA, not supported on Windows
   },
 ];
 
 export const defaultUser = {
-  // 设置一个可理解的用户名，以防 WebAuthn UX 显示它
-  // (例如，Chrome MacOS 108+ 上的 Passkeys UX)。这仅用于显示，
-  // 对 SPC 的功能没有影响。(例如，它不会在 SPC 交易对话框中显示。)
-  name: "Andrew",
+  // Set a comprehensible username in case WebAuthn UX displays it
+  // (e.g., Passkeys UX on Chrome MacOS 108+). This is for display only,
+  // and has no impact on SPC functionality. (e.g., it won't show in SPC transaction dialog.)
+  name: "Aptos",
   displayName: "",
-  // TODO 稍后查看这个
+  // TODO check this later
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   id: Uint8Array.from(String(Math.random() * 99999999)),
 };
 
 export const defaultResidentKey: ResidentKeyRequirement = spcSupportsPreferred()
-  ? "preferred"   // 首选
-  : "required";   // 必需
+  ? "preferred"   // Preferred
+  : "required";   // Required
 
 export const defaultAuthenticatorSelection: SPCPublicKeyCredentialCreationOptions["authenticatorSelection"] =
   {
-    userVerification: "required",      // 用户验证必需
-    residentKey: defaultResidentKey,   // 常驻密钥
-    authenticatorAttachment: "cross-platform", // 平台认证器
+    userVerification: "required",      // User verification required
+    residentKey: defaultResidentKey,   // Resident key
+    authenticatorAttachment: "cross-platform", // Platform authenticator
   };
 
 export const generateDefaultPublicKey =
@@ -220,9 +215,9 @@ export const generateDefaultSPCPublicKey =
   };
 
 /**
- * 创建一个演示 WebAuthn 凭证，可选择设置 'payment' 扩展
- * 创建的凭证将始终具有名称 'Andrew ···· 1234'，
- * 与认证中使用的演示支付工具匹配
+ * Create a demo WebAuthn credential, optionally setting 'payment' extension
+ * The created credential will always have the name 'Andrew ···· 1234',
+ * matching the demo payment instrument used in authentication
  *
  * @param {SPCPublicKeyCredentialCreationOptions} publicKey
  */
@@ -257,7 +252,7 @@ export async function createSPCCredential(
 }
 
 /**
- * 这是 getCredential 方法的基础实现
+ * This is the basic implementation of the getCredential method
  */
 export async function getCredential(
   allowCredentials: PublicKeyCredentialDescriptor[]
@@ -265,9 +260,9 @@ export async function getCredential(
   const { challenge } = await generateTestRawTxn();
 
   const publicKey: PublicKeyCredentialRequestOptions = {
-    challenge: challenge as ArrayBuffer,                    // 挑战
-    allowCredentials: allowCredentials,  // 允许的凭证
-    extensions: {},              // 扩展
+    challenge: challenge as ArrayBuffer,                    // Challenge
+    allowCredentials: allowCredentials,  // Allowed credentials
+    extensions: {},              // Extensions
   };
 
   return (await navigator.credentials.get({
@@ -276,20 +271,20 @@ export async function getCredential(
 }
 
 /**
- * 返回 SPC 是否支持 residentKey 'preferred'（而不仅仅是 'required'）
- * 不幸的是，没有方法可以检测此功能，所以我们必须进行版本检查
+ * Returns whether SPC supports residentKey 'preferred' (not just 'required')
+ * Unfortunately, there's no way to detect this feature, so we must do version checking
  *
- * @return {boolean} 如果 SPC 支持 residentKey 参数的 'preferred' 则为 true，
- *     否则为 false
+ * @return {boolean} true if SPC supports 'preferred' for residentKey parameter,
+ *     false otherwise
  */
 export function spcSupportsPreferred() {
-  // 这不仅对 Chrome 为 true，对 Edge 等也为 true，但这没关系
+  // This is true not only for Chrome but also for Edge, etc., but that's fine
   const match = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
   if (!match) return false;
 
   const version = parseInt(match[2], 10);
-  // https://crrev.com/130fada41 在 106.0.5228.0 中落地，但为简单起见，
-  // 我们假设任何 106 版本都可以
+  // https://crrev.com/130fada41 landed in 106.0.5228.0, but for simplicity,
+  // we assume any 106 version will work
   return version >= 106;
 }
 
@@ -297,11 +292,11 @@ export function spcSupportsPreferred() {
  * @see https://www.w3.org/TR/secure-payment-confirmation/#dictdef-paymentcredentialinstrument
  */
 export interface PaymentCredentialInstrument {
-  // 必需的 USVString 显示名称
+  // Required USVString display name
   displayName: string;
-  // 必需的 USVString 图标
+  // Required USVString icon
   icon: string;
-  // 布尔值 iconMustBeShown = true
+  // Boolean iconMustBeShown = true
   iconMustBeShown?: boolean;
 }
 
@@ -310,33 +305,33 @@ export interface PaymentCredentialInstrument {
  */
 export interface SecurePaymentConfirmationRequest {
   challenge: Uint8Array;
-  // 必需的 USVString 依赖方 ID
+  // Required USVString relying party ID
   rpId: string;
-  // 必需的 sequence<BufferSource> 凭证 ID 序列
+  // Required sequence<BufferSource> credential ID sequence
   credentialIds: Uint8Array[];
-  // 必需的 PaymentCredentialInstrument 支付凭证工具
+  // Required PaymentCredentialInstrument payment credential instrument
   instrument: PaymentCredentialInstrument;
-  // 无符号长整型超时时间
+  // Unsigned long timeout
   timeout?: number;
-  // USVString 收款方名称
+  // USVString payee name
   payeeName?: string;
-  // USVString 收款方来源
+  // USVString payee origin
   payeeOrigin?: string;
-  // AuthenticationExtensionsClientInputs 认证扩展客户端输入
+  // AuthenticationExtensionsClientInputs authentication extension client inputs
   extensions: Record<string, unknown>;
-  // sequence<USVString> 语言环境序列
+  // sequence<USVString> locale sequence
   locale?: string[];
-  // 布尔值 显示退出选项
+  // Boolean show opt-out option
   showOptOut?: boolean;
 }
 
 /**
- * 为 SPC 创建 PaymentRequest 对象
+ * Create PaymentRequest object for SPC
  *
- * @param {SecurePaymentConfirmationRequest} spcData - 输入的 SPC 数据。credentialIds 字段
- *     *必须* 设置。此对象中未设置的任何其他 SecurePaymentConfirmationRequest
- *     字段将初始化为默认值。
- * @return {PaymentRequest} 支付请求对象
+ * @param {SecurePaymentConfirmationRequest} spcData - Input SPC data. credentialIds field
+ *     *must* be set. Any other SecurePaymentConfirmationRequest fields not set in this object
+ *     will be initialized to default values.
+ * @return {PaymentRequest} Payment request object
  */
 export function createSPCPaymentRequest(
   spcData: SecurePaymentConfirmationRequest
@@ -350,18 +345,18 @@ export function createSPCPaymentRequest(
 
   // https://w3c.github.io/secure-payment-confirmation/#sctn-securepaymentconfirmationrequest-dictionary
   if (spcData.challenge === undefined)
-    spcData.challenge = new TextEncoder().encode("network_data");  // 网络数据
-  if (spcData.rpId === undefined) spcData.rpId = window.location.hostname;  // 依赖方 ID
+    spcData.challenge = new TextEncoder().encode("network_data");  // Network data
+  if (spcData.rpId === undefined) spcData.rpId = window.location.hostname;  // Relying party ID
   if (spcData.instrument === undefined)
-    spcData.instrument = { displayName: "Andrew ···· 1234", icon: "" };  // 默认支付工具
+    spcData.instrument = { displayName: "Andrew ···· 1234", icon: "" };  // Default payment instrument
   if (spcData.instrument.icon === undefined)
     spcData.instrument.icon =
-      "https://rsolomakhin.github.io/pr/spc/troy-alt-logo.png";  // 默认图标
-  if (spcData.timeout === undefined) spcData.timeout = 60000;  // 默认超时时间
-  // 我们只在 *两个* payeeName 和 payeeOrigin 都未设置时才设置默认的 payeeOrigin，
-  // 因为规范故意允许其中一个或两个都为 null
+      "https://rsolomakhin.github.io/pr/spc/troy-alt-logo.png";  // Default icon
+  if (spcData.timeout === undefined) spcData.timeout = 60000;  // Default timeout
+  // We only set default payeeOrigin when *both* payeeName and payeeOrigin are not set,
+  // because the spec intentionally allows either or both to be null
   if (!("payeeName" in spcData) && !("payeeOrigin" in spcData))
-    spcData.payeeOrigin = window.location.origin;  // 默认收款方来源
+    spcData.payeeOrigin = window.location.origin;  // Default payee origin
 
   const supportedInstruments = [
     { supportedMethods: "secure-payment-confirmation", data: spcData },
@@ -380,18 +375,18 @@ export function createSPCPaymentRequest(
 }
 
 /**
- * 使用 Aptos SDK 从公钥计算地址
+ * Calculate address from public key using Aptos SDK
  */
 export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): string {
   try {
-    // 验证公钥格式：应该是 65 字节 (0x04 + 32字节x + 32字节y)
+    // Validate public key format: should be 65 bytes (0x04 + 32 bytes x + 32 bytes y)
     if (publicKeyBytes.length !== 65) {
-      throw new Error(`公钥长度不正确: ${publicKeyBytes.length}，应该是 65 字节`);
+      throw new Error(`Incorrect public key length: ${publicKeyBytes.length}, should be 65 bytes`);
     }
     
-    // 验证公钥格式：第一个字节应该是 0x04 (未压缩的 EC 公钥)
+    // Validate public key format: first byte should be 0x04 (uncompressed EC public key)
     if (publicKeyBytes[0] !== 0x04) {
-      throw new Error(`公钥格式不正确: 第一个字节应该是 0x04，实际是 0x${publicKeyBytes[0].toString(16)}`);
+      throw new Error(`Incorrect public key format: first byte should be 0x04, actual is 0x${publicKeyBytes[0].toString(16)}`);
     }
 
     let publicKey = new Secp256r1PublicKey(publicKeyBytes);
@@ -399,8 +394,8 @@ export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): 
      
     return authKey.derivedAddress().toString();
   } catch (error) {
-    console.error('计算 Aptos 地址失败:', error);
-    return '计算失败';
+    console.error('Failed to calculate Aptos address:', error);
+    return 'Calculation failed';
   }
 }
 
@@ -415,7 +410,7 @@ export function parsePublicKey(response: PublicKeyCredential): Uint8Array {
 }
 
 /**
- * 获取凭证的完整信息
+ * Get complete credential information
  */
 export function getCredentialInfo(credential: PublicKeyCredential): {
   id: string;
@@ -444,13 +439,13 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
       rawData: publickey
     };
   } catch (error) {
-    console.error('获取凭证信息失败:', error);
+    console.error('Failed to get credential information:', error);
     return null;
   }
 }
-import type { ECDSA, ECDSASigFormat } from '@noble/curves/abstract/weierstrass';
+import type { ECDSASigFormat } from '@noble/curves/abstract/weierstrass';
 
-// ecdsaImpl 是你通过 ecdsa(Point, hash) 得到的实现对象
+// ecdsaImpl is the implementation object you get from ecdsa(Point, hash)
 export function normalizeS(
   sigBytes: Uint8Array,
   formFormat: ECDSASigFormat = 'compact',
@@ -458,13 +453,13 @@ export function normalizeS(
 ): Uint8Array {
   const sig = p256.Signature.fromBytes(sigBytes, formFormat);
 
-  // 已经是低 S，直接返回
+  // Already low S, return directly
   if (!sig.hasHighS()) return sig.toBytes(toFormat);
 
-  // 归一化：s -> -s mod n（等价于 n - s）
+  // Normalize: s -> -s mod n (equivalent to n - s)
   const sLow = p256.Point.Fn.neg(sig.s);
 
-  // 如果是 recovered 签名，需要翻转 recovery 的最低位
+  // If it's a recovered signature, need to flip the lowest bit of recovery
   const rec = sig.recovery != null ? (sig.recovery ^ 1) : undefined;
 
   const normalized = new p256.Signature(sig.r, sLow, rec);
@@ -472,7 +467,7 @@ export function normalizeS(
 }
 
 /**
- * 在 Aptos 网络上执行模拟转账
+ * Execute simulated transfer on Aptos network
  */
 export async function simulateTransfer(
   credentialId?: string,
@@ -482,36 +477,35 @@ export async function simulateTransfer(
 ) {
 
   if (!credentialId) {
-    alert("请先创建一个 Passkey 凭证");
-    return;
+    throw new Error("Please create a Passkey credential first");
   }
   try {
 
-    // 使用 passkey
-    // 读取当前公钥计算地址
+    // Use passkey
+    // Read current public key to calculate address
     
 
-    // 创建账户
+    // Create account
   
 
-    // 获取账户地址
+    // Get account address
     const savedCredential = window.localStorage.getItem("credentialData");
     
     if (!savedCredential) {
-      throw new Error("请先创建一个 Passkey 凭证");
+      throw new Error("Please create a Passkey credential first");
     }
     const credentialData = JSON.parse(savedCredential);
     
-    // 使用传入的参数或默认值
+    // Use passed parameters or default values
     const finalSenderAddress = senderAddress || credentialData.publicKey.aptosAddress;
     const finalReceiverAddress = receiverAddress || "0x1234567890123456789012345678901234567890123456789012345678901234";
-    const finalAmount = amount || 1000; // 默认 0.001 APT (1000 最小单位)
+    const finalAmount = amount || 1000; // Default 0.001 APT (1000 smallest units)
     
-    console.log(`=== ${currentNetwork.name} 转账模拟 ===`);
-    console.log("发送方地址:", finalSenderAddress);
-    console.log("接收方地址:", finalReceiverAddress);
-    console.log("转账金额:", finalAmount, "最小单位");
-    console.log("网络:", currentNetwork.name);
+    console.log(`=== ${currentNetwork.name} Transfer Simulation ===`);
+    console.log("Sender Address:", finalSenderAddress);
+    console.log("Receiver Address:", finalReceiverAddress);
+    console.log("Transfer Amount:", finalAmount, "smallest units");
+    console.log("Network:", currentNetwork.name);
     
 
     console.log(aptosClient)
@@ -534,7 +528,7 @@ export async function simulateTransfer(
     });
     console.log("rawTxn", simpleTxn.rawTransaction);
     
-    // 计算 challenge
+    // Calculate challenge
 
     const message = generateSigningMessageForTransaction(simpleTxn);
     console.log("message", message);
@@ -542,7 +536,7 @@ export async function simulateTransfer(
     const challenge = sha3_256(message);
     console.log("challenge", challenge);
 
-    // 签名
+    // Sign
 
     const allowedCredentials: PublicKeyCredentialDescriptor[] = [
       {
@@ -552,9 +546,9 @@ export async function simulateTransfer(
     ];
 
     const publicKey: PublicKeyCredentialRequestOptions = {
-      challenge: challenge.buffer as ArrayBuffer,                    // 挑战 - 转换为 ArrayBuffer
-      allowCredentials: allowedCredentials,  // 允许的凭证
-      extensions: {},              // 扩展
+      challenge: challenge.buffer as ArrayBuffer,                    // Challenge - convert to ArrayBuffer
+      allowCredentials: allowedCredentials,  // Allowed credentials
+      extensions: {},              // Extensions
     };
   
     let credential = await navigator.credentials.get({
@@ -586,7 +580,7 @@ export async function simulateTransfer(
     );
     console.log("transactionAuthenticator", transactionAuthenticator.bcsToHex().toString());
 
-    // sumbit transaction
+    // Submit transaction
     
     const result = await aptosClient.transaction.submit.simple({
       transaction: simpleTxn,
@@ -598,7 +592,7 @@ export async function simulateTransfer(
 
     
 
-    // 返回交易哈希
+    // Return transaction hash
     if (result.hash) {
       return result.hash;
     } else {
@@ -611,7 +605,7 @@ export async function simulateTransfer(
 }
 
 /**
- * 检查交易状态
+ * Check transaction status
  */
 export async function checkTransactionStatus(transactionHash: string): Promise<string> {
   try {
@@ -626,19 +620,19 @@ export async function checkTransactionStatus(transactionHash: string): Promise<s
     const transaction = await response.json();
     console.log("Transaction response:", transaction);
     
-    // Aptos 交易状态检查逻辑
+    // Aptos transaction status check logic
     if (transaction.success === true) {
       return "Transaction successfully on-chain";
     } else if (transaction.success === false) {
       return `Transaction failed: ${transaction.vm_status || 'Unknown error'}`;
     } else {
-      // 检查其他可能的成功标志
+      // Check other possible success flags
       if (transaction.vm_status === "Executed successfully") {
         return "Transaction successfully on-chain";
       } else if (transaction.vm_status && transaction.vm_status !== "Executed successfully") {
         return `Transaction failed: ${transaction.vm_status}`;
       } else {
-        // 如果没有明确的状态，检查交易是否存在于链上
+        // If no clear status, check if transaction exists on-chain
         if (transaction.hash) {
           return "Transaction successfully on-chain";
         } else {
@@ -647,21 +641,21 @@ export async function checkTransactionStatus(transactionHash: string): Promise<s
       }
     }
   } catch (error) {
-    console.error("检查交易状态失败:", error);
+    console.error("Failed to check transaction status:", error);
     throw error;
   }
 }
 
 /**
- * 带超时的循环交易状态检查
+ * Transaction status check with timeout loop
  */
 export async function checkTransactionStatusWithTimeout(transactionHash: string): Promise<string> {
-  const maxAttempts = 10; // 10秒超时
-  const intervalMs = 1000; // 1秒检查一次
+  const maxAttempts = 10; // 10 second timeout
+  const intervalMs = 1000; // Check every 1 second
   
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      console.log(`第 ${attempt} 次检查交易状态...`);
+      console.log(`Attempt ${attempt} to check transaction status...`);
       
       const response = await fetch(
         `${currentNetwork.fullnodeUrl}/v1/transactions/by_hash/${transactionHash}`
@@ -669,7 +663,7 @@ export async function checkTransactionStatusWithTimeout(transactionHash: string)
       
       if (!response.ok) {
         if (response.status === 404) {
-          // 交易还未上链，继续等待
+          // Transaction not yet on-chain, continue waiting
           if (attempt < maxAttempts) {
             await new Promise(resolve => setTimeout(resolve, intervalMs));
             continue;
@@ -684,19 +678,19 @@ export async function checkTransactionStatusWithTimeout(transactionHash: string)
       const transaction = await response.json();
       console.log(`Transaction response (attempt ${attempt}):`, transaction);
       
-      // Aptos 交易状态检查逻辑
+      // Aptos transaction status check logic
       if (transaction.success === true) {
         return "Transaction successfully on-chain";
       } else if (transaction.success === false) {
         return `Transaction failed: ${transaction.vm_status || 'Unknown error'}`;
       } else {
-        // 检查其他可能的成功标志
+        // Check other possible success flags
         if (transaction.vm_status === "Executed successfully") {
           return "Transaction successfully on-chain";
         } else if (transaction.vm_status && transaction.vm_status !== "Executed successfully") {
           return `Transaction failed: ${transaction.vm_status}`;
         } else {
-          // 如果没有明确的状态，检查交易是否存在于链上
+          // If no clear status, check if transaction exists on-chain
           if (transaction.hash) {
             return "Transaction successfully on-chain";
           } else {
@@ -706,7 +700,7 @@ export async function checkTransactionStatusWithTimeout(transactionHash: string)
       }
       
     } catch (error) {
-      console.error(`第 ${attempt} 次检查失败:`, error);
+      console.error(`Attempt ${attempt} failed:`, error);
       
       if (attempt < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, intervalMs));

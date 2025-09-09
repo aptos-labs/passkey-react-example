@@ -11,7 +11,7 @@
   },
   "packageManager": "pnpm@10.15.0",
   "dependencies": {
-    "@aptos-labs/ts-sdk": "link:/Users/logan/code/github/aptos-labs/aptos-ts-sdk",
+    "@wgb5445/ts-sdk": "4.0.1",
     "@noble/curves": "^1.2.0",
     "@noble/hashes": "^1.3.2",
     "@simplewebauthn/browser": "^13.1.2",
