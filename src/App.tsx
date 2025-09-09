@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import { Buffer } from "buffer";
@@ -8,12 +8,14 @@ import {
   getCredential,
   generateTestRawTxn,
   getCredentialInfo,
-  simulateTransfer,
+  submitTransfer,
   calculateAptosAddressFromPublicKey,
   p256SignatureFromDER,
   NETWORKS,
   switchNetwork,
   checkTransactionStatusWithTimeout,
+  getAptBalance,
+  requestFaucet,
 } from "./helper/webauthn";
 import { Hex } from "@wgb5445/ts-sdk";
 
@@ -39,6 +41,30 @@ function App() {
   const [createSuccessData, setCreateSuccessData] = useState<any>(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [aptBalance, setAptBalance] = useState<number | null>(null);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [isRequestingFaucet, setIsRequestingFaucet] = useState(false);
+
+  // Auto-refresh balance every 5 seconds when transfer modal is open
+  useEffect(() => {
+    let interval: number;
+    
+    if (showTransferModal && credentialId) {
+      // Initial fetch
+      fetchAptBalance();
+      
+      // Set up interval for auto-refresh
+      interval = window.setInterval(() => {
+        fetchAptBalance();
+      }, 5000);
+    }
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [showTransferModal, credentialId]);
 
   // Create passkey through credential registration ceremony
   const createPasskey = async () => {
@@ -180,6 +206,63 @@ function App() {
     }
   };
 
+  // Function to get user's APT balance
+  const fetchAptBalance = async () => {
+    if (!credentialId) return;
+    
+    try {
+      setIsLoadingBalance(true);
+      const savedCredential = window.localStorage.getItem("credentialData");
+      if (savedCredential) {
+        const credentialData = JSON.parse(savedCredential);
+        const balance = await getAptBalance(credentialData.publicKey.aptosAddress);
+        setAptBalance(balance);
+      }
+    } catch (error) {
+      console.error("Failed to fetch APT balance:", error);
+      setAptBalance(null);
+    } finally {
+      setIsLoadingBalance(false);
+    }
+  };
+
+  // Function to request faucet (devnet only)
+  const handleFaucetRequest = async () => {
+    if (!credentialId) return;
+    
+    try {
+      setIsRequestingFaucet(true);
+      const savedCredential = window.localStorage.getItem("credentialData");
+      if (savedCredential) {
+        const credentialData = JSON.parse(savedCredential);
+        await requestFaucet(credentialData.publicKey.aptosAddress);
+        
+        // Wait for transaction to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Refresh balance
+        await fetchAptBalance();
+      }
+    } catch (error) {
+      console.error("Faucet request failed:", error);
+      showError(`Faucet request failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsRequestingFaucet(false);
+    }
+  };
+
+  // Function to open testnet faucet page
+  const openTestnetFaucet = () => {
+    if (!credentialId) return;
+    
+    const savedCredential = window.localStorage.getItem("credentialData");
+    if (savedCredential) {
+      const credentialData = JSON.parse(savedCredential);
+      const faucetUrl = `https://aptos.dev/network/faucet?address=${credentialData.publicKey.aptosAddress}`;
+      window.open(faucetUrl, '_blank');
+    }
+  };
+
   return (
     <>
       <div>
@@ -226,13 +309,13 @@ function App() {
 
           <div className="feature-card">
             <div className="feature-icon">🚀</div>
-            <h3>Simulate Transfer</h3>
-            <p>Test a complete transaction flow using your passkey. Experience real Web3 interactions.</p>
+            <h3>Submit Transfer</h3>
+            <p>Submit a real transaction using your passkey. Experience actual Web3 interactions on Aptos.</p>
             <button 
               onClick={()=>setShowTransferModal(true)}
               className="feature-button transfer-button"
             >
-              Simulate Transfer
+              Submit Transfer
             </button>
           </div>
         </div>
@@ -364,12 +447,12 @@ function App() {
         </div>
       )}
 
-      {/* Transfer Simulation Modal */}
+      {/* Transfer Transaction Modal */}
       {showTransferModal && (
         <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Transfer Simulation</h2>
+              <h2>Submit Transfer Transaction</h2>
               <button 
                 className="modal-close" 
                 onClick={() => setShowTransferModal(false)}
@@ -382,9 +465,11 @@ function App() {
                 <h3>Select Network</h3>
                 <select 
                   value={selectedNetwork} 
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     setSelectedNetwork(e.target.value);
                     switchNetwork(e.target.value as keyof typeof NETWORKS);
+                    // Refresh balance after network switch
+                    await fetchAptBalance();
                   }}
                   className="network-select"
                 >
@@ -398,6 +483,59 @@ function App() {
                   Current Network: {NETWORKS[selectedNetwork as keyof typeof NETWORKS]?.name} 
                   ({NETWORKS[selectedNetwork as keyof typeof NETWORKS]?.fullnodeUrl})
                 </p>
+              </div>
+
+              {/* APT Balance Display */}
+              <div className="info-section">
+                <h3>APT Balance</h3>
+                <div className="balance-display">
+                  {isLoadingBalance ? (
+                    <div className="balance-loading">
+                      <span className="spinner"></span>
+                      Loading balance...
+                    </div>
+                  ) : aptBalance !== null ? (
+                    <div className="balance-amount">
+                      <span className="balance-value">{aptBalance.toFixed(6)} APT</span>
+                      <span className="balance-update">Auto-refreshes every 5s</span>
+                    </div>
+                  ) : (
+                    <div className="balance-error">
+                      Failed to load balance
+                    </div>
+                  )}
+                </div>
+                
+                {/* Faucet Button based on network */}
+                {selectedNetwork === 'DEVNET' && (
+                  <div className="faucet-section">
+                    <button 
+                      onClick={handleFaucetRequest}
+                      disabled={isRequestingFaucet}
+                      className="faucet-button"
+                    >
+                      {isRequestingFaucet ? (
+                        <>
+                          <span className="spinner"></span>
+                          Requesting...
+                        </>
+                      ) : (
+                        '🚰 Request Faucet (0.1 APT)'
+                      )}
+                    </button>
+                  </div>
+                )}
+                
+                {selectedNetwork === 'TESTNET' && (
+                  <div className="faucet-section">
+                    <button 
+                      onClick={openTestnetFaucet}
+                      className="faucet-button testnet-faucet"
+                    >
+                      🌐 Open Testnet Faucet
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="info-section">
@@ -490,7 +628,7 @@ function App() {
                     setTransactionStatus('Building transaction...');
                     
                     const amountInSmallestUnit = Math.floor(parseFloat(transferData.amount) * 100000000);
-                    const hash = await simulateTransfer(
+                    const hash = await submitTransfer(
                       credentialId || undefined,
                       undefined,
                       transferData.receiverAddress || undefined,
@@ -520,7 +658,7 @@ function App() {
                     Processing...
                   </>
                 ) : (
-                  'Start Transfer Simulation'
+                  'Submit Transfer Transaction'
                 )}
               </button>
             </div>
@@ -711,7 +849,7 @@ function App() {
                 <div className="signature-description">
                   <p>• Use "Sign with credential" to test your passkey</p>
                   <p>• Use "View Address and Public Key" to see your credentials anytime</p>
-                  <p>• Use "Simulate Transfer" to test transaction signing</p>
+                  <p>• Use "Submit Transfer" to test transaction signing</p>
                   <p>• Your passkey is securely stored and ready for use</p>
                 </div>
               </div>

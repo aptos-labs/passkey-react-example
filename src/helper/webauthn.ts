@@ -467,9 +467,9 @@ export function normalizeS(
 }
 
 /**
- * Execute simulated transfer on Aptos network
+ * Execute transfer transaction on Aptos network
  */
-export async function simulateTransfer(
+export async function submitTransfer(
   credentialId?: string,
   senderAddress?: string,
   receiverAddress?: string,
@@ -501,7 +501,7 @@ export async function simulateTransfer(
     const finalReceiverAddress = receiverAddress || "0x1234567890123456789012345678901234567890123456789012345678901234";
     const finalAmount = amount || 1000; // Default 0.001 APT (1000 smallest units)
     
-    console.log(`=== ${currentNetwork.name} Transfer Simulation ===`);
+    console.log(`=== ${currentNetwork.name} Transfer Transaction ===`);
     console.log("Sender Address:", finalSenderAddress);
     console.log("Receiver Address:", finalReceiverAddress);
     console.log("Transfer Amount:", finalAmount, "smallest units");
@@ -599,7 +599,7 @@ export async function simulateTransfer(
       throw new Error("Failed to get transaction hash");
     }
   } catch (error) {
-    console.error("Transfer simulation failed:", error);
+    console.error("Transfer transaction failed:", error);
     throw error;
   }
 }
@@ -642,6 +642,83 @@ export async function checkTransactionStatus(transactionHash: string): Promise<s
     }
   } catch (error) {
     console.error("Failed to check transaction status:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get APT balance for an address
+ */
+export async function getAptBalance(address: string): Promise<number> {
+  try {
+    const response = await fetch(`${currentNetwork.fullnodeUrl}/v1/view`, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json, application/x-bcs",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        function: "0x1::coin::balance",
+        type_arguments: ["0x1::aptos_coin::AptosCoin"],
+        arguments: [address]
+      })
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Account doesn't exist or has no APT balance
+        return 0;
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    const balance = parseInt(data[0]);
+    
+    // Convert from smallest unit (octas) to APT
+    return balance / 100000000;
+  } catch (error) {
+    console.error("Failed to get APT balance:", error);
+    throw error;
+  }
+}
+
+/**
+ * Request APT from faucet (devnet only)
+ */
+export async function requestFaucet(address: string): Promise<boolean> {
+  if (currentNetwork.name !== "Devnet") {
+    throw new Error("Faucet is only available on Devnet");
+  }
+  
+  if (!currentNetwork.faucetUrl) {
+    throw new Error("Faucet URL not configured for this network");
+  }
+  
+  try {
+    // Use POST request with JSON body
+    const faucetUrl = `${currentNetwork.faucetUrl}/fund`;
+    const response = await fetch(faucetUrl, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        address: address,
+        amount: 10000000,
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Faucet request failed: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    console.log("Faucet response:", result);
+    return true;
+  } catch (error) {
+    console.error("Faucet request failed:", error);
     throw error;
   }
 }
