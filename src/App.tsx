@@ -17,7 +17,7 @@ import {
   getAptBalance,
   requestFaucet,
 } from "./helper/webauthn";
-import { Hex } from "@wgb5445/ts-sdk";
+import { Hex } from "@aptos-labs/ts-sdk";
 
 function App() {
   const [credentialId, setCredentialId] = useState<string | null>(

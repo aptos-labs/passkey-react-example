@@ -15,9 +15,9 @@ import {
   AnyPublicKey,
   AnySignature,
   WebAuthnSignature,
-} from "@wgb5445/ts-sdk";
+} from "@aptos-labs/ts-sdk";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
-import { Secp256r1PublicKey } from "@wgb5445/ts-sdk";
+import { Secp256r1PublicKey } from "@aptos-labs/ts-sdk";
 
 // Network configuration type
 interface NetworkConfig {
