@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** Some code sourced from https://rsolomakhin.github.io/pr/spc/ */
 
-import { sha3_256 } from "@noble/hashes/sha3";
+import { sha3_256 } from "@noble/hashes/sha3.js";
 import { p256 } from '@noble/curves/nist.js';
 import { Buffer } from "buffer";
 import {
@@ -18,6 +18,7 @@ import {
 } from "@aptos-labs/ts-sdk";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
 import { Secp256r1PublicKey } from "@aptos-labs/ts-sdk";
+import { ECDSASignatureFormat } from "@noble/curves/abstract/weierstrass";
 
 // Network configuration type
 interface NetworkConfig {
@@ -443,15 +444,15 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
     return null;
   }
 }
-import type { ECDSASigFormat } from '@noble/curves/abstract/weierstrass';
+
 
 // ecdsaImpl is the implementation object you get from ecdsa(Point, hash)
 export function normalizeS(
   sigBytes: Uint8Array,
-  formFormat: ECDSASigFormat = 'compact',
-  toFormat: ECDSASigFormat = 'compact'
+  formFormat: ECDSASignatureFormat = 'compact',
+  toFormat: ECDSASignatureFormat = 'compact'
 ): Uint8Array {
-  const sig = p256.Signature.fromBytes(sigBytes, formFormat);
+  const sig = p256.Signature.fromBytes(sigBytes, formFormat as ECDSASignatureFormat);
 
   // Already low S, return directly
   if (!sig.hasHighS()) return sig.toBytes(toFormat);
