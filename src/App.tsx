@@ -85,7 +85,7 @@ function App() {
 
   // Auto-refresh balance every 5 seconds when transfer modal is open
   useEffect(() => {
-    let interval: number;
+    let interval: ReturnType<typeof setInterval> | undefined;
 
     if (showTransferModal && credentialId) {
       void fetchAptBalance();
@@ -96,7 +96,7 @@ function App() {
     }
 
     return () => {
-      if (interval) {
+      if (interval !== undefined) {
         clearInterval(interval);
       }
     };
@@ -130,6 +130,8 @@ function App() {
           "credentialData",
           JSON.stringify(credentialInfo),
         );
+        setCredentialId(credentialInfo.id);
+        window.localStorage.setItem("credentialId", credentialInfo.id);
 
         // Show success modal
         setCreateSuccessData(credentialInfo);
@@ -139,9 +141,6 @@ function App() {
           "Failed to create Passkey: Unable to extract public key information",
         );
       }
-
-      setCredentialId(credentialInfo?.id || "");
-      window.localStorage.setItem("credentialId", credentialInfo?.id || "");
     } catch (error: unknown) {
       console.error("Failed to create Passkey:", error);
       const msg = error instanceof Error ? error.message : String(error);
@@ -168,11 +167,12 @@ function App() {
           Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array(),
         );
 
+        const recomputed = calculateAptosAddressFromPublicKey(
+          new Uint8Array(Buffer.from(credentialData.publicKey.hex, "hex")),
+        );
         console.log(
-          "Aptos Address:",
-          calculateAptosAddressFromPublicKey(
-            new Uint8Array(Buffer.from(credentialData.publicKey.hex, "hex")),
-          ),
+          "Aptos Address (recomputed):",
+          recomputed ?? "(invalid key)",
         );
 
         // Show modal

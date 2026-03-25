@@ -380,11 +380,12 @@ export function createSPCPaymentRequest(
 }
 
 /**
- * Calculate address from public key using Aptos SDK
+ * Calculate address from public key using Aptos SDK.
+ * Returns null if the key bytes are invalid or derivation fails (never a sentinel string).
  */
 export function calculateAptosAddressFromPublicKey(
   publicKeyBytes: Uint8Array,
-): string {
+): string | null {
   try {
     // Validate public key format: should be 65 bytes (0x04 + 32 bytes x + 32 bytes y)
     if (publicKeyBytes.length !== 65) {
@@ -406,7 +407,7 @@ export function calculateAptosAddressFromPublicKey(
     return authKey.derivedAddress().toString();
   } catch (error) {
     console.error("Failed to calculate Aptos address:", error);
-    return "Calculation failed";
+    return null;
   }
 }
 
@@ -450,13 +451,17 @@ export function getCredentialInfo(
     const publickey = parsePublicKey(response);
 
     console.log("publickey", new Hex(publickey).toString());
+    const aptosAddress = calculateAptosAddressFromPublicKey(publickey);
+    if (aptosAddress == null) {
+      return null;
+    }
     return {
       id: Buffer.from(credential.rawId).toString("base64"),
       type: credential.type || "",
       publicKey: {
         base64: Buffer.from(publickey).toString("base64"),
         hex: Buffer.from(publickey).toString("hex"),
-        aptosAddress: calculateAptosAddressFromPublicKey(publickey),
+        aptosAddress,
       },
     };
   } catch (error) {
@@ -467,6 +472,29 @@ export function getCredentialInfo(
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
+}
+
+const PKCS_UNCOMPRESSED_P256_HEX_LEN = 130; // 65 bytes * 2
+
+function isValidHexPublicKey(hex: string): boolean {
+  if (hex.length !== PKCS_UNCOMPRESSED_P256_HEX_LEN) return false;
+  if (!/^[0-9a-fA-F]+$/.test(hex)) return false;
+  const bytes = Buffer.from(hex, "hex");
+  return bytes.length === 65 && bytes[0] === 0x04;
+}
+
+function isValidBase64PublicKey(b64: string, expectedRawLen: number): boolean {
+  if (!/^[A-Za-z0-9+/]+=*$/.test(b64)) return false;
+  try {
+    const buf = Buffer.from(b64, "base64");
+    return buf.length === expectedRawLen;
+  } catch {
+    return false;
+  }
+}
+
+function isValidAptosAccountAddress(addr: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(addr);
 }
 
 /**
@@ -486,6 +514,13 @@ export function parseStoredCredentialInfo(json: string): CredentialInfo | null {
       typeof base64 !== "string" ||
       typeof hex !== "string" ||
       typeof aptosAddress !== "string"
+    ) {
+      return null;
+    }
+    if (
+      !isValidHexPublicKey(hex) ||
+      !isValidBase64PublicKey(base64, 65) ||
+      !isValidAptosAccountAddress(aptosAddress)
     ) {
       return null;
     }
