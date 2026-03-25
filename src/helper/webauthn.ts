@@ -691,21 +691,23 @@ export async function submitTransfer(
     );
     console.log("signatureCompact", signatureCompact);
 
-    const transactionAuthenticator = new TransactionAuthenticatorSingleSender(
-      new AccountAuthenticatorSingleKey(
-        new AnyPublicKey(
-          new Secp256r1PublicKey(
-            Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array(),
-          ),
-        ),
-        new AnySignature(
-          new WebAuthnSignature(
-            signatureCompact,
-            new Uint8Array(authenticatorData),
-            new Uint8Array(clientDataJSON),
-          ),
+    const senderAuthenticator = new AccountAuthenticatorSingleKey(
+      new AnyPublicKey(
+        new Secp256r1PublicKey(
+          Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array(),
         ),
       ),
+      new AnySignature(
+        new WebAuthnSignature(
+          signatureCompact,
+          new Uint8Array(authenticatorData),
+          new Uint8Array(clientDataJSON),
+        ),
+      ),
+    );
+
+    const transactionAuthenticator = new TransactionAuthenticatorSingleSender(
+      senderAuthenticator,
     );
     console.log(
       "transactionAuthenticator",
@@ -716,20 +718,7 @@ export async function submitTransfer(
 
     const result = await aptosClient.transaction.submit.simple({
       transaction: simpleTxn,
-      senderAuthenticator: new AccountAuthenticatorSingleKey(
-        new AnyPublicKey(
-          new Secp256r1PublicKey(
-            Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array(),
-          ),
-        ),
-        new AnySignature(
-          new WebAuthnSignature(
-            signatureCompact,
-            new Uint8Array(authenticatorData),
-            new Uint8Array(clientDataJSON),
-          ),
-        ),
-      ),
+      senderAuthenticator,
     });
 
     // Return transaction hash
