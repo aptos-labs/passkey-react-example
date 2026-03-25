@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import { Buffer } from "buffer";
@@ -16,91 +16,147 @@ import {
   checkTransactionStatusWithTimeout,
   getAptBalance,
   requestFaucet,
+  type CredentialInfo,
+  parseStoredCredentialInfo,
 } from "./helper/webauthn";
 import { Hex } from "@aptos-labs/ts-sdk";
 
+type SignatureModalData = {
+  rawTransaction: string;
+  authenticatorData: string;
+  clientDataJSON: string;
+  signature: string;
+  credentialId: string;
+};
+
 function App() {
   const [credentialId, setCredentialId] = useState<string | null>(
-    window.localStorage.getItem("credentialId")
+    window.localStorage.getItem("credentialId"),
   );
   const [showPublicKeyModal, setShowPublicKeyModal] = useState(false);
-  const [publicKeyData, setPublicKeyData] = useState<any>(null);
+  const [publicKeyData, setPublicKeyData] = useState<CredentialInfo | null>(
+    null,
+  );
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferData, setTransferData] = useState({
-    senderAddress: '',
-    receiverAddress: '',
-    amount: '0.001'
+    senderAddress: "",
+    receiverAddress: "",
+    amount: "0.001",
   });
-  const [selectedNetwork, setSelectedNetwork] = useState('DEVNET');
+  const [selectedNetwork, setSelectedNetwork] = useState("DEVNET");
   const [isTransferring, setIsTransferring] = useState(false);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
-  const [transactionStatus, setTransactionStatus] = useState<string>('');
+  const [transactionStatus, setTransactionStatus] = useState<string>("");
   const [showSignSuccessModal, setShowSignSuccessModal] = useState(false);
-  const [signatureData, setSignatureData] = useState<any>(null);
+  const [signatureData, setSignatureData] = useState<SignatureModalData | null>(
+    null,
+  );
   const [showCreateSuccessModal, setShowCreateSuccessModal] = useState(false);
-  const [createSuccessData, setCreateSuccessData] = useState<any>(null);
+  const [createSuccessData, setCreateSuccessData] =
+    useState<CredentialInfo | null>(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string>("");
   const [aptBalance, setAptBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [isRequestingFaucet, setIsRequestingFaucet] = useState(false);
 
+  // Function to get user's APT balance
+  const fetchAptBalance = useCallback(async () => {
+    if (!credentialId) return;
+
+    try {
+      setIsLoadingBalance(true);
+      const savedCredential = window.localStorage.getItem("credentialData");
+      if (savedCredential) {
+        const credentialData = parseStoredCredentialInfo(savedCredential);
+        if (!credentialData) {
+          setAptBalance(null);
+          return;
+        }
+        const balance = await getAptBalance(
+          credentialData.publicKey.aptosAddress,
+        );
+        setAptBalance(balance);
+      } else {
+        setAptBalance(null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch APT balance:", error);
+      setAptBalance(null);
+    } finally {
+      setIsLoadingBalance(false);
+    }
+  }, [credentialId]);
+
   // Auto-refresh balance every 5 seconds when transfer modal is open
   useEffect(() => {
-    let interval: number;
-    
+    let interval: ReturnType<typeof setInterval> | undefined;
+
     if (showTransferModal && credentialId) {
-      // Initial fetch
-      fetchAptBalance();
-      
-      // Set up interval for auto-refresh
+      void fetchAptBalance();
+
       interval = window.setInterval(() => {
-        fetchAptBalance();
+        void fetchAptBalance();
       }, 5000);
     }
-    
+
     return () => {
-      if (interval) {
+      if (interval !== undefined) {
         clearInterval(interval);
       }
     };
-  }, [showTransferModal, credentialId]);
+  }, [showTransferModal, credentialId, fetchAptBalance]);
 
   // Create passkey through credential registration ceremony
   const createPasskey = async () => {
     try {
-
       const credential = await createCredential();
-      
+
       console.log("credential", credential);
 
+      if (!credential) {
+        showError("Passkey creation was cancelled or is not supported");
+        return;
+      }
+      if (!(credential instanceof PublicKeyCredential)) {
+        showError("Unexpected credential type from the browser");
+        return;
+      }
+
       // Get complete credential information
-      const credentialInfo = getCredentialInfo(credential as PublicKeyCredential);
-      
+      const credentialInfo = getCredentialInfo(credential);
+
       if (credentialInfo) {
         console.log("==== Passkey Created Successfully ===");
         console.log("Credential ID:", credentialInfo.id);
         console.log("Public Key (Base64):", credentialInfo.publicKey.base64);
         console.log("Public Key (Hex):", credentialInfo.publicKey.hex);
         console.log("Aptos Address:", credentialInfo.publicKey.aptosAddress);
-        console.log("Complete Credential Data:", credentialInfo.rawData);
-        
+        console.log(
+          "Complete Credential Data (hex):",
+          credentialInfo.publicKey.hex,
+        );
+
         // Save to local storage
-        window.localStorage.setItem("credentialData", JSON.stringify(credentialInfo));
-        
+        window.localStorage.setItem(
+          "credentialData",
+          JSON.stringify(credentialInfo),
+        );
+        setCredentialId(credentialInfo.id);
+        window.localStorage.setItem("credentialId", credentialInfo.id);
+
         // Show success modal
         setCreateSuccessData(credentialInfo);
         setShowCreateSuccessModal(true);
       } else {
-        showError("Failed to create Passkey: Unable to extract public key information");
+        showError(
+          "Failed to create Passkey: Unable to extract public key information",
+        );
       }
-      
-      setCredentialId(credentialInfo?.id || '');
-      window.localStorage.setItem("credentialId", credentialInfo?.id || '');
-      
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to create Passkey:", error);
-      showError(`Failed to create Passkey: ${error.message || error}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(`Failed to create Passkey: ${msg}`);
     }
   };
 
@@ -109,22 +165,35 @@ function App() {
     try {
       const savedCredential = window.localStorage.getItem("credentialData");
       if (savedCredential) {
-        const credentialData = JSON.parse(savedCredential);
+        const credentialData = parseStoredCredentialInfo(savedCredential);
+        if (!credentialData) {
+          showError("Saved credential data is invalid or corrupted");
+          return;
+        }
         console.log("==== Saved Passkey Public Key Information ===");
         console.log("Credential ID:", credentialData.id);
         console.log("Public Key (Base64):", credentialData.publicKey.base64);
         console.log("Public Key (Hex):", credentialData.publicKey.hex);
-        console.log("Public Key (Uint8Array):", new Hex(credentialData.publicKey.hex).toUint8Array());
-        
-        console.log("Aptos Address:", calculateAptosAddressFromPublicKey(Buffer.from(credentialData.publicKey.hex, "hex")));
-        
+        console.log(
+          "Public Key (Uint8Array):",
+          Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array(),
+        );
+
+        const recomputed = calculateAptosAddressFromPublicKey(
+          new Uint8Array(Buffer.from(credentialData.publicKey.hex, "hex")),
+        );
+        console.log(
+          "Aptos Address (recomputed):",
+          recomputed ?? "(invalid key)",
+        );
+
         // Show modal
         setShowPublicKeyModal(true);
         setPublicKeyData(credentialData);
       } else {
         showError("Please create a Passkey credential first");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to get public key:", error);
       showError("Failed to get public key, please check console");
     }
@@ -155,8 +224,8 @@ function App() {
       }
       const { clientDataJSON, authenticatorData, signature } =
         authenticationResponse.response as AuthenticatorAssertionResponse;
-      
-      console.log("==== Raw Transaction BCS Bytes ===")
+
+      console.log("==== Raw Transaction BCS Bytes ===");
       console.log(rawTransaction.bcsToBytes().toString());
       console.log("==== WebAuthn Response - Authenticator Data ===");
       console.log(new Uint8Array(authenticatorData).toString());
@@ -171,15 +240,16 @@ function App() {
         authenticatorData: new Uint8Array(authenticatorData).toString(),
         clientDataJSON: new Uint8Array(clientDataJSON).toString(),
         signature: p256SignatureFromDER(new Uint8Array(signature)).toString(),
-        credentialId: credentialId
+        credentialId: credentialId,
       };
 
       // Show success modal
       setSignatureData(signatureInfo);
       setShowSignSuccessModal(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Signing failed:", error);
-      showError(`Signing failed: ${error.message || error}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(`Signing failed: ${msg}`);
     }
   };
 
@@ -194,7 +264,7 @@ function App() {
     try {
       await navigator.clipboard.writeText(text);
       // Success feedback could be added here if needed
-    } catch (err) {
+    } catch {
       // If navigator.clipboard is not available, use traditional method
       const textArea = document.createElement("textarea");
       textArea.value = text;
@@ -206,46 +276,38 @@ function App() {
     }
   };
 
-  // Function to get user's APT balance
-  const fetchAptBalance = async () => {
-    if (!credentialId) return;
-    
-    try {
-      setIsLoadingBalance(true);
-      const savedCredential = window.localStorage.getItem("credentialData");
-      if (savedCredential) {
-        const credentialData = JSON.parse(savedCredential);
-        const balance = await getAptBalance(credentialData.publicKey.aptosAddress);
-        setAptBalance(balance);
-      }
-    } catch (error) {
-      console.error("Failed to fetch APT balance:", error);
-      setAptBalance(null);
-    } finally {
-      setIsLoadingBalance(false);
-    }
-  };
-
   // Function to request faucet (devnet only)
   const handleFaucetRequest = async () => {
     if (!credentialId) return;
-    
+
     try {
       setIsRequestingFaucet(true);
       const savedCredential = window.localStorage.getItem("credentialData");
       if (savedCredential) {
-        const credentialData = JSON.parse(savedCredential);
+        const credentialData = parseStoredCredentialInfo(savedCredential);
+        if (!credentialData) {
+          showError(
+            "Saved credential data is invalid or corrupted. Please recreate your passkey.",
+          );
+          return;
+        }
         await requestFaucet(credentialData.publicKey.aptosAddress);
-        
+
         // Wait for transaction to complete
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
         // Refresh balance
         await fetchAptBalance();
+      } else {
+        showError(
+          "No saved credential data found. Please create a passkey first.",
+        );
       }
     } catch (error) {
       console.error("Faucet request failed:", error);
-      showError(`Faucet request failed: ${error instanceof Error ? error.message : String(error)}`);
+      showError(
+        `Faucet request failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     } finally {
       setIsRequestingFaucet(false);
     }
@@ -254,12 +316,22 @@ function App() {
   // Function to open testnet faucet page
   const openTestnetFaucet = () => {
     if (!credentialId) return;
-    
+
     const savedCredential = window.localStorage.getItem("credentialData");
     if (savedCredential) {
-      const credentialData = JSON.parse(savedCredential);
+      const credentialData = parseStoredCredentialInfo(savedCredential);
+      if (!credentialData) {
+        showError(
+          "Saved credential data is invalid or corrupted. Please recreate your passkey.",
+        );
+        return;
+      }
       const faucetUrl = `https://aptos.dev/network/faucet?address=${credentialData.publicKey.aptosAddress}`;
-      window.open(faucetUrl, '_blank');
+      window.open(faucetUrl, "_blank");
+    } else {
+      showError(
+        "No saved credential data found. Please create a passkey first.",
+      );
     }
   };
 
@@ -275,7 +347,7 @@ function App() {
       </div>
       <h1>Aptos Passkey WebAuthn Demo</h1>
       <p className="demo-description">
-        Experience secure authentication with passkeys on the Aptos blockchain. 
+        Experience secure authentication with passkeys on the Aptos blockchain.
         Create, manage, and use your passkey for seamless Web3 transactions.
       </p>
       <div className="card">
@@ -283,7 +355,10 @@ function App() {
           <div className="feature-card">
             <div className="feature-icon">🔐</div>
             <h3>Create Passkey</h3>
-            <p>Generate a secure passkey credential using WebAuthn. Your biometric data stays on your device.</p>
+            <p>
+              Generate a secure passkey credential using WebAuthn. Your
+              biometric data stays on your device.
+            </p>
             <button onClick={createPasskey} className="feature-button">
               Create Passkey
             </button>
@@ -292,7 +367,10 @@ function App() {
           <div className="feature-card">
             <div className="feature-icon">✍️</div>
             <h3>Sign Transactions</h3>
-            <p>Test your passkey by signing challenge data. Experience secure authentication without passwords.</p>
+            <p>
+              Test your passkey by signing challenge data. Experience secure
+              authentication without passwords.
+            </p>
             <button onClick={signWithPasskey} className="feature-button">
               Sign with Passkey
             </button>
@@ -301,7 +379,10 @@ function App() {
           <div className="feature-card">
             <div className="feature-icon">👁️</div>
             <h3>View Credentials</h3>
-            <p>See your Aptos address and public key information. Copy credentials for external use.</p>
+            <p>
+              See your Aptos address and public key information. Copy
+              credentials for external use.
+            </p>
             <button onClick={viewPasskeyPublicKey} className="feature-button">
               View Address & Keys
             </button>
@@ -310,9 +391,12 @@ function App() {
           <div className="feature-card">
             <div className="feature-icon">🚀</div>
             <h3>Submit Transfer</h3>
-            <p>Submit a real transaction using your passkey. Experience actual Web3 interactions on Aptos.</p>
-            <button 
-              onClick={()=>setShowTransferModal(true)}
+            <p>
+              Submit a real transaction using your passkey. Experience actual
+              Web3 interactions on Aptos.
+            </p>
+            <button
+              onClick={() => setShowTransferModal(true)}
               className="feature-button transfer-button"
             >
               Submit Transfer
@@ -323,25 +407,47 @@ function App() {
         <div className="info-section">
           <h3>What is this demo?</h3>
           <p>
-            This demo showcases <strong>passkey authentication</strong> on the Aptos blockchain using WebAuthn. 
-            Passkeys provide a more secure and user-friendly alternative to traditional passwords by using 
-            biometric authentication (fingerprint, face recognition) or device PINs.
+            This demo showcases <strong>passkey authentication</strong> on the
+            Aptos blockchain using WebAuthn. Passkeys provide a more secure and
+            user-friendly alternative to traditional passwords by using
+            biometric authentication (fingerprint, face recognition) or device
+            PINs.
           </p>
-          
+
           <div className="benefits-list">
             <h4>Key Benefits:</h4>
             <ul>
-              <li>🔒 <strong>Enhanced Security:</strong> No passwords to steal or phish</li>
-              <li>⚡ <strong>Faster Authentication:</strong> One-touch biometric verification</li>
-              <li>🌐 <strong>Cross-Platform:</strong> Works across devices and browsers</li>
-              <li>🔗 <strong>Blockchain Ready:</strong> Seamless Web3 transaction signing</li>
+              <li>
+                🔒 <strong>Enhanced Security:</strong> No passwords to steal or
+                phish
+              </li>
+              <li>
+                ⚡ <strong>Faster Authentication:</strong> One-touch biometric
+                verification
+              </li>
+              <li>
+                🌐 <strong>Cross-Platform:</strong> Works across devices and
+                browsers
+              </li>
+              <li>
+                🔗 <strong>Blockchain Ready:</strong> Seamless Web3 transaction
+                signing
+              </li>
             </ul>
           </div>
 
           <div className="technical-info">
-            <p><strong>Relying Party ID:</strong> <code>{window.location.hostname}</code></p>
-            <p><strong>Supported Networks:</strong> Devnet, Testnet, Mainnet</p>
-            <p><strong>Browser Support:</strong> Chrome 67+, Firefox 60+, Safari 13+, Edge 79+</p>
+            <p>
+              <strong>Relying Party ID:</strong>{" "}
+              <code>{window.location.hostname}</code>
+            </p>
+            <p>
+              <strong>Supported Networks:</strong> Devnet, Testnet, Mainnet
+            </p>
+            <p>
+              <strong>Browser Support:</strong> Chrome 67+, Firefox 60+, Safari
+              13+, Edge 79+
+            </p>
           </div>
         </div>
       </div>
@@ -351,12 +457,15 @@ function App() {
 
       {/* Public Key Information Modal */}
       {showPublicKeyModal && publicKeyData && (
-        <div className="modal-overlay" onClick={() => setShowPublicKeyModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowPublicKeyModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Passkey Public Key Information</h2>
-              <button 
-                className="modal-close" 
+              <button
+                className="modal-close"
                 onClick={() => setShowPublicKeyModal(false)}
               >
                 ×
@@ -366,14 +475,16 @@ function App() {
               <div className="info-section">
                 <h3>Aptos Address</h3>
                 <div className="copy-field">
-                  <input 
-                    type="text" 
-                    value={publicKeyData.publicKey.aptosAddress} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={publicKeyData.publicKey.aptosAddress}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
-                    onClick={() => copyToClipboard(publicKeyData.publicKey.aptosAddress)}
+                  <button
+                    onClick={() =>
+                      copyToClipboard(publicKeyData.publicKey.aptosAddress)
+                    }
                     className="copy-button"
                   >
                     Copy
@@ -384,13 +495,13 @@ function App() {
               <div className="info-section">
                 <h3>Credential ID</h3>
                 <div className="copy-field">
-                  <input 
-                    type="text" 
-                    value={publicKeyData.id} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={publicKeyData.id}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
+                  <button
                     onClick={() => copyToClipboard(publicKeyData.id)}
                     className="copy-button"
                   >
@@ -402,13 +513,13 @@ function App() {
               <div className="info-section">
                 <h3>Public Key (Hex)</h3>
                 <div className="copy-field">
-                  <input 
-                    type="text" 
-                    value={publicKeyData.publicKey.hex} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={publicKeyData.publicKey.hex}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
+                  <button
                     onClick={() => copyToClipboard(publicKeyData.publicKey.hex)}
                     className="copy-button"
                   >
@@ -420,14 +531,16 @@ function App() {
               <div className="info-section">
                 <h3>Public Key (Base64)</h3>
                 <div className="copy-field">
-                  <input 
-                    type="text" 
-                    value={publicKeyData.publicKey.base64} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={publicKeyData.publicKey.base64}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
-                    onClick={() => copyToClipboard(publicKeyData.publicKey.base64)}
+                  <button
+                    onClick={() =>
+                      copyToClipboard(publicKeyData.publicKey.base64)
+                    }
                     className="copy-button"
                   >
                     Copy
@@ -436,7 +549,7 @@ function App() {
               </div>
             </div>
             <div className="modal-footer">
-              <button 
+              <button
                 onClick={() => setShowPublicKeyModal(false)}
                 className="modal-close-button"
               >
@@ -449,12 +562,15 @@ function App() {
 
       {/* Transfer Transaction Modal */}
       {showTransferModal && (
-        <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowTransferModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Submit Transfer Transaction</h2>
-              <button 
-                className="modal-close" 
+              <button
+                className="modal-close"
                 onClick={() => setShowTransferModal(false)}
               >
                 ×
@@ -463,8 +579,8 @@ function App() {
             <div className="modal-body">
               <div className="info-section">
                 <h3>Select Network</h3>
-                <select 
-                  value={selectedNetwork} 
+                <select
+                  value={selectedNetwork}
                   onChange={async (e) => {
                     setSelectedNetwork(e.target.value);
                     switchNetwork(e.target.value as keyof typeof NETWORKS);
@@ -480,8 +596,13 @@ function App() {
                   ))}
                 </select>
                 <p className="network-info">
-                  Current Network: {NETWORKS[selectedNetwork as keyof typeof NETWORKS]?.name} 
-                  ({NETWORKS[selectedNetwork as keyof typeof NETWORKS]?.fullnodeUrl})
+                  Current Network:{" "}
+                  {NETWORKS[selectedNetwork as keyof typeof NETWORKS]?.name}(
+                  {
+                    NETWORKS[selectedNetwork as keyof typeof NETWORKS]
+                      ?.fullnodeUrl
+                  }
+                  )
                 </p>
               </div>
 
@@ -496,20 +617,22 @@ function App() {
                     </div>
                   ) : aptBalance !== null ? (
                     <div className="balance-amount">
-                      <span className="balance-value">{aptBalance.toFixed(6)} APT</span>
-                      <span className="balance-update">Auto-refreshes every 5s</span>
+                      <span className="balance-value">
+                        {aptBalance.toFixed(6)} APT
+                      </span>
+                      <span className="balance-update">
+                        Auto-refreshes every 5s
+                      </span>
                     </div>
                   ) : (
-                    <div className="balance-error">
-                      Failed to load balance
-                    </div>
+                    <div className="balance-error">Failed to load balance</div>
                   )}
                 </div>
-                
+
                 {/* Faucet Button based on network */}
-                {selectedNetwork === 'DEVNET' && (
+                {selectedNetwork === "DEVNET" && (
                   <div className="faucet-section">
-                    <button 
+                    <button
                       onClick={handleFaucetRequest}
                       disabled={isRequestingFaucet}
                       className="faucet-button"
@@ -520,15 +643,15 @@ function App() {
                           Requesting...
                         </>
                       ) : (
-                        '🚰 Request Faucet (0.1 APT)'
+                        "🚰 Request Faucet (0.1 APT)"
                       )}
                     </button>
                   </div>
                 )}
-                
-                {selectedNetwork === 'TESTNET' && (
+
+                {selectedNetwork === "TESTNET" && (
                   <div className="faucet-section">
-                    <button 
+                    <button
                       onClick={openTestnetFaucet}
                       className="faucet-button testnet-faucet"
                     >
@@ -541,10 +664,15 @@ function App() {
               <div className="info-section">
                 <h3>Receiver Address</h3>
                 <div className="input-field">
-                  <input 
-                    type="text" 
-                    value={transferData.receiverAddress} 
-                    onChange={(e) => setTransferData(prev => ({...prev, receiverAddress: e.target.value}))}
+                  <input
+                    type="text"
+                    value={transferData.receiverAddress}
+                    onChange={(e) =>
+                      setTransferData((prev) => ({
+                        ...prev,
+                        receiverAddress: e.target.value,
+                      }))
+                    }
                     placeholder="0x1234567890123456789012345678901234567890123456789012345678901234"
                     className="transfer-input"
                   />
@@ -554,15 +682,23 @@ function App() {
               <div className="info-section">
                 <h3>Transfer Amount (APT)</h3>
                 <div className="input-field">
-                  <input 
-                    type="text" 
-                    value={transferData.amount} 
-                    onChange={(e) => setTransferData(prev => ({...prev, amount: e.target.value}))}
+                  <input
+                    type="text"
+                    value={transferData.amount}
+                    onChange={(e) =>
+                      setTransferData((prev) => ({
+                        ...prev,
+                        amount: e.target.value,
+                      }))
+                    }
                     placeholder="0.001"
                     className="transfer-input"
                   />
                   <p className="amount-info">
-                    Smallest Unit: {Math.floor(parseFloat(transferData.amount || '0') * 100000000)}
+                    Smallest Unit:{" "}
+                    {Math.floor(
+                      parseFloat(transferData.amount || "0") * 100000000,
+                    )}
                   </p>
                 </div>
               </div>
@@ -572,33 +708,36 @@ function App() {
                 <div className="info-section">
                   <h3>Transaction Status</h3>
                   <div className="status-display">
-                    <p className={`status-text ${transactionStatus.includes('successfully') ? 'success' : transactionStatus.includes('failed') || transactionStatus.includes('timeout') ? 'error' : 'info'}`}>
+                    <p
+                      className={`status-text ${transactionStatus.includes("successfully") ? "success" : transactionStatus.includes("failed") || transactionStatus.includes("timeout") ? "error" : "info"}`}
+                    >
                       {transactionStatus}
                     </p>
                     {transactionHash && (
                       <div className="hash-display">
                         <h4>Transaction Hash:</h4>
                         <div className="copy-field">
-                          <input 
-                            type="text" 
-                            value={transactionHash} 
-                            readOnly 
+                          <input
+                            type="text"
+                            value={transactionHash}
+                            readOnly
                             className="copy-input"
                           />
-                          <button 
+                          <button
                             onClick={() => copyToClipboard(transactionHash)}
                             className="copy-button"
                           >
                             Copy
                           </button>
                         </div>
-                        {transactionStatus.includes('successfully') && (
+                        {transactionStatus.includes("successfully") && (
                           <div className="explorer-link">
-                            <button 
+                            <button
                               onClick={() => {
-                                const networkKey = selectedNetwork.toLowerCase();
+                                const networkKey =
+                                  selectedNetwork.toLowerCase();
                                 const explorerUrl = `https://explorer.aptoslabs.com/txn/${transactionHash}?network=${networkKey}`;
-                                window.open(explorerUrl, '_blank');
+                                window.open(explorerUrl, "_blank");
                               }}
                               className="explorer-button"
                             >
@@ -613,44 +752,55 @@ function App() {
               )}
             </div>
             <div className="modal-footer">
-              <button 
+              <button
                 onClick={() => setShowTransferModal(false)}
                 className="modal-close-button"
                 disabled={isTransferring}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={async () => {
                   try {
                     setIsTransferring(true);
                     setTransactionHash(null);
-                    setTransactionStatus('Building transaction...');
-                    
-                    const amountInSmallestUnit = Math.floor(parseFloat(transferData.amount) * 100000000);
+                    setTransactionStatus("Building transaction...");
+
+                    const amountInSmallestUnit = Math.floor(
+                      parseFloat(transferData.amount) * 100000000,
+                    );
                     const hash = await submitTransfer(
                       credentialId || undefined,
                       undefined,
                       transferData.receiverAddress || undefined,
-                      amountInSmallestUnit
+                      amountInSmallestUnit,
                     );
-                    
+
                     if (hash) {
                       setTransactionHash(hash);
-                      setTransactionStatus('Transaction submitted, checking status...');
-                      
+                      setTransactionStatus(
+                        "Transaction submitted, checking status...",
+                      );
+
                       // Loop check transaction status
-                      const status = await checkTransactionStatusWithTimeout(hash);
+                      const status =
+                        await checkTransactionStatusWithTimeout(hash);
                       setTransactionStatus(status);
                     }
-                  } catch (error: any) {
-                    setTransactionStatus(`Transfer failed: ${error.message || error}`);
+                  } catch (error: unknown) {
+                    const msg =
+                      error instanceof Error ? error.message : String(error);
+                    setTransactionStatus(`Transfer failed: ${msg}`);
                   } finally {
                     setIsTransferring(false);
                   }
                 }}
                 className="transfer-button"
-                disabled={!transferData.amount || parseFloat(transferData.amount) <= 0 || isTransferring}
+                disabled={
+                  !transferData.amount ||
+                  parseFloat(transferData.amount) <= 0 ||
+                  isTransferring
+                }
               >
                 {isTransferring ? (
                   <>
@@ -658,7 +808,7 @@ function App() {
                     Processing...
                   </>
                 ) : (
-                  'Submit Transfer Transaction'
+                  "Submit Transfer Transaction"
                 )}
               </button>
             </div>
@@ -668,12 +818,15 @@ function App() {
 
       {/* Signature Success Modal */}
       {showSignSuccessModal && signatureData && (
-        <div className="modal-overlay" onClick={() => setShowSignSuccessModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowSignSuccessModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>✅ Signature Successful</h2>
-              <button 
-                className="modal-close" 
+              <button
+                className="modal-close"
                 onClick={() => setShowSignSuccessModal(false)}
               >
                 ×
@@ -683,18 +836,30 @@ function App() {
               <div className="success-message">
                 <h3>🎉 Passkey Signature Completed Successfully!</h3>
                 <p>
-                  Your passkey has successfully signed the challenge data. The signature verifies your identity 
-                  and can be used for secure authentication or transaction authorization.
+                  Your passkey has successfully signed the challenge data. The
+                  signature verifies your identity and can be used for secure
+                  authentication or transaction authorization.
                 </p>
               </div>
 
               <div className="info-section">
                 <h3>What was signed:</h3>
                 <div className="signature-description">
-                  <p><strong>Challenge Data:</strong> A randomly generated 32-byte challenge for authentication</p>
-                  <p><strong>Credential ID:</strong> {signatureData.credentialId}</p>
-                  <p><strong>Signature Type:</strong> ECDSA P-256 (secp256r1) using WebAuthn</p>
-                  <p><strong>Authentication Method:</strong> Passkey biometric authentication</p>
+                  <p>
+                    <strong>Challenge Data:</strong> A randomly generated
+                    32-byte challenge for authentication
+                  </p>
+                  <p>
+                    <strong>Credential ID:</strong> {signatureData.credentialId}
+                  </p>
+                  <p>
+                    <strong>Signature Type:</strong> ECDSA P-256 (secp256r1)
+                    using WebAuthn
+                  </p>
+                  <p>
+                    <strong>Authentication Method:</strong> Passkey biometric
+                    authentication
+                  </p>
                 </div>
               </div>
 
@@ -702,14 +867,16 @@ function App() {
                 <h3>Signature Details</h3>
                 <div className="copy-field">
                   <label>Raw Transaction (BCS):</label>
-                  <input 
-                    type="text" 
-                    value={signatureData.rawTransaction} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={signatureData.rawTransaction}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
-                    onClick={() => copyToClipboard(signatureData.rawTransaction)}
+                  <button
+                    onClick={() =>
+                      copyToClipboard(signatureData.rawTransaction)
+                    }
                     className="copy-button"
                   >
                     Copy
@@ -718,13 +885,13 @@ function App() {
 
                 <div className="copy-field">
                   <label>Signature (Compact Format):</label>
-                  <input 
-                    type="text" 
-                    value={signatureData.signature} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={signatureData.signature}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
+                  <button
                     onClick={() => copyToClipboard(signatureData.signature)}
                     className="copy-button"
                   >
@@ -734,14 +901,16 @@ function App() {
 
                 <div className="copy-field">
                   <label>Authenticator Data:</label>
-                  <input 
-                    type="text" 
-                    value={signatureData.authenticatorData} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={signatureData.authenticatorData}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
-                    onClick={() => copyToClipboard(signatureData.authenticatorData)}
+                  <button
+                    onClick={() =>
+                      copyToClipboard(signatureData.authenticatorData)
+                    }
                     className="copy-button"
                   >
                     Copy
@@ -750,7 +919,7 @@ function App() {
               </div>
             </div>
             <div className="modal-footer">
-              <button 
+              <button
                 onClick={() => setShowSignSuccessModal(false)}
                 className="modal-close-button"
               >
@@ -763,12 +932,15 @@ function App() {
 
       {/* Passkey Creation Success Modal */}
       {showCreateSuccessModal && createSuccessData && (
-        <div className="modal-overlay" onClick={() => setShowCreateSuccessModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowCreateSuccessModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>🎉 Passkey Created Successfully!</h2>
-              <button 
-                className="modal-close" 
+              <button
+                className="modal-close"
                 onClick={() => setShowCreateSuccessModal(false)}
               >
                 ×
@@ -778,18 +950,28 @@ function App() {
               <div className="success-message">
                 <h3>✅ Your Passkey is Ready!</h3>
                 <p>
-                  Your passkey has been successfully created and is ready to use for secure authentication. 
-                  The credential has been saved locally and can be used for signing transactions.
+                  Your passkey has been successfully created and is ready to use
+                  for secure authentication. The credential has been saved
+                  locally and can be used for signing transactions.
                 </p>
               </div>
 
               <div className="info-section">
                 <h3>Credential Information</h3>
                 <div className="signature-description">
-                  <p><strong>Credential ID:</strong> {createSuccessData.id}</p>
-                  <p><strong>Type:</strong> {createSuccessData.type}</p>
-                  <p><strong>Authentication Method:</strong> Passkey biometric authentication</p>
-                  <p><strong>Status:</strong> Active and ready to use</p>
+                  <p>
+                    <strong>Credential ID:</strong> {createSuccessData.id}
+                  </p>
+                  <p>
+                    <strong>Type:</strong> {createSuccessData.type}
+                  </p>
+                  <p>
+                    <strong>Authentication Method:</strong> Passkey biometric
+                    authentication
+                  </p>
+                  <p>
+                    <strong>Status:</strong> Active and ready to use
+                  </p>
                 </div>
               </div>
 
@@ -797,14 +979,16 @@ function App() {
                 <h3>Address & Public Key</h3>
                 <div className="copy-field">
                   <label>Aptos Address:</label>
-                  <input 
-                    type="text" 
-                    value={createSuccessData.publicKey.aptosAddress} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={createSuccessData.publicKey.aptosAddress}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
-                    onClick={() => copyToClipboard(createSuccessData.publicKey.aptosAddress)}
+                  <button
+                    onClick={() =>
+                      copyToClipboard(createSuccessData.publicKey.aptosAddress)
+                    }
                     className="copy-button"
                   >
                     Copy
@@ -813,14 +997,16 @@ function App() {
 
                 <div className="copy-field">
                   <label>Public Key (Hex):</label>
-                  <input 
-                    type="text" 
-                    value={createSuccessData.publicKey.hex} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={createSuccessData.publicKey.hex}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
-                    onClick={() => copyToClipboard(createSuccessData.publicKey.hex)}
+                  <button
+                    onClick={() =>
+                      copyToClipboard(createSuccessData.publicKey.hex)
+                    }
                     className="copy-button"
                   >
                     Copy
@@ -829,14 +1015,16 @@ function App() {
 
                 <div className="copy-field">
                   <label>Public Key (Base64):</label>
-                  <input 
-                    type="text" 
-                    value={createSuccessData.publicKey.base64} 
-                    readOnly 
+                  <input
+                    type="text"
+                    value={createSuccessData.publicKey.base64}
+                    readOnly
                     className="copy-input"
                   />
-                  <button 
-                    onClick={() => copyToClipboard(createSuccessData.publicKey.base64)}
+                  <button
+                    onClick={() =>
+                      copyToClipboard(createSuccessData.publicKey.base64)
+                    }
                     className="copy-button"
                   >
                     Copy
@@ -848,14 +1036,17 @@ function App() {
                 <h3>Next Steps</h3>
                 <div className="signature-description">
                   <p>• Use "Sign with credential" to test your passkey</p>
-                  <p>• Use "View Address and Public Key" to see your credentials anytime</p>
+                  <p>
+                    • Use "View Address and Public Key" to see your credentials
+                    anytime
+                  </p>
                   <p>• Use "Submit Transfer" to test transaction signing</p>
                   <p>• Your passkey is securely stored and ready for use</p>
                 </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button 
+              <button
                 onClick={() => setShowCreateSuccessModal(false)}
                 className="modal-close-button"
               >
@@ -869,11 +1060,14 @@ function App() {
       {/* Error Modal */}
       {showErrorModal && (
         <div className="modal-overlay" onClick={() => setShowErrorModal(false)}>
-          <div className="modal-content error-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-content error-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h2>⚠️ Error</h2>
-              <button 
-                className="modal-close" 
+              <button
+                className="modal-close"
                 onClick={() => setShowErrorModal(false)}
               >
                 ×
@@ -885,7 +1079,7 @@ function App() {
               </div>
             </div>
             <div className="modal-footer">
-              <button 
+              <button
                 onClick={() => setShowErrorModal(false)}
                 className="modal-close-button"
               >

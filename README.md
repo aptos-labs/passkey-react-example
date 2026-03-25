@@ -23,6 +23,7 @@ A comprehensive demonstration of passkey authentication on the Aptos blockchain 
 ## 🎯 What are Passkeys?
 
 Passkeys provide a more secure and user-friendly alternative to traditional passwords by using:
+
 - **Biometric Authentication**: Fingerprint, face recognition, or device PINs
 - **Enhanced Security**: No passwords to steal or phish
 - **Faster Authentication**: One-touch verification
@@ -40,17 +41,20 @@ Passkeys provide a more secure and user-friendly alternative to traditional pass
 ### Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd passkeys-ts
    ```
 
 2. **Install dependencies**
+
    ```bash
    pnpm install
    ```
 
 3. **Start development server**
+
    ```bash
    pnpm dev
    ```
@@ -61,21 +65,25 @@ Passkeys provide a more secure and user-friendly alternative to traditional pass
 ## 📖 How to Use
 
 ### 1. Create a Passkey
+
 - Click "Create Passkey" to generate a new WebAuthn credential
 - Use your device's biometric authentication (fingerprint, face ID, etc.)
 - Your passkey is securely stored locally and ready for use
 
 ### 2. Sign Transactions
+
 - Click "Sign with Passkey" to test your passkey authentication
 - Experience secure transaction signing without passwords
 - View detailed signature information and transaction data
 
 ### 3. View Credentials
+
 - Click "View Address & Keys" to see your Aptos address and public key
 - Copy credentials for external use or backup
 - All information is derived from your passkey
 
 ### 4. Submit Real Transactions
+
 - Click "Submit Transfer" to send actual APT tokens
 - Select your preferred network (Devnet/Testnet/Mainnet)
 - Check balances and request test tokens from faucets
@@ -83,26 +91,29 @@ Passkeys provide a more secure and user-friendly alternative to traditional pass
 
 ## 🌐 Supported Networks
 
-| Network | Purpose | Faucet Available | Explorer |
-|---------|---------|------------------|----------|
-| **Devnet** | Development & Testing | ✅ Yes | [Explorer](https://explorer.aptoslabs.com) |
-| **Testnet** | Pre-production Testing | ✅ Yes | [Explorer](https://explorer.aptoslabs.com) |
-| **Mainnet** | Production | ❌ No | [Explorer](https://explorer.aptoslabs.com) |
+| Network     | Purpose                | Faucet Available | Explorer                                   |
+| ----------- | ---------------------- | ---------------- | ------------------------------------------ |
+| **Devnet**  | Development & Testing  | ✅ Yes           | [Explorer](https://explorer.aptoslabs.com) |
+| **Testnet** | Pre-production Testing | ✅ Yes           | [Explorer](https://explorer.aptoslabs.com) |
+| **Mainnet** | Production             | ❌ No            | [Explorer](https://explorer.aptoslabs.com) |
 
 ## 🔧 Technical Details
 
 ### WebAuthn Implementation
+
 - **Algorithm**: ECDSA P-256 (secp256r1)
 - **Key Type**: Public-key credentials
 - **User Verification**: Required
 - **Resident Key**: Preferred (when supported)
 
 ### Aptos Integration
+
 - **Address Derivation**: Secp256r1PublicKey → AuthKey → Aptos Address
 - **Transaction Signing**: WebAuthn signature with authenticator data
 - **Network Support**: Full Aptos network compatibility
 
 ### Security Features
+
 - **Local Storage**: Credentials stored securely in browser
 - **Biometric Protection**: Device-level authentication required
 - **No Server Dependencies**: Fully client-side implementation
@@ -111,11 +122,11 @@ Passkeys provide a more secure and user-friendly alternative to traditional pass
 ## 🛡️ Browser Compatibility
 
 | Browser | Minimum Version | WebAuthn Support | Biometric Support |
-|---------|----------------|------------------|-------------------|
-| Chrome | 67+ | ✅ Full | ✅ Yes |
-| Firefox | 60+ | ✅ Full | ✅ Yes |
-| Safari | 13+ | ✅ Full | ✅ Yes |
-| Edge | 79+ | ✅ Full | ✅ Yes |
+| ------- | --------------- | ---------------- | ----------------- |
+| Chrome  | 67+             | ✅ Full          | ✅ Yes            |
+| Firefox | 60+             | ✅ Full          | ✅ Yes            |
+| Safari  | 13+             | ✅ Full          | ✅ Yes            |
+| Edge    | 79+             | ✅ Full          | ✅ Yes            |
 
 ## 📁 Project Structure
 
@@ -165,6 +176,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 For questions or issues:
+
 - Open an issue on GitHub
 - Check the Aptos documentation
 - Review WebAuthn browser compatibility
