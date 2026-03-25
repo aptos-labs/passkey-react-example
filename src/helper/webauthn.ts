@@ -524,6 +524,20 @@ export function parseStoredCredentialInfo(json: string): CredentialInfo | null {
     ) {
       return null;
     }
+    const bytesFromHex = Buffer.from(hex, "hex");
+    const bytesFromB64 = Buffer.from(base64, "base64");
+    if (bytesFromB64.length !== 65 || !bytesFromB64.equals(bytesFromHex)) {
+      return null;
+    }
+    const recomputed = calculateAptosAddressFromPublicKey(
+      new Uint8Array(bytesFromHex),
+    );
+    if (
+      recomputed == null ||
+      recomputed.toLowerCase() !== aptosAddress.toLowerCase()
+    ) {
+      return null;
+    }
     return {
       id,
       type,
@@ -585,6 +599,11 @@ export async function submitTransfer(
     const credentialData = parseStoredCredentialInfo(savedCredential);
     if (!credentialData) {
       throw new Error("Saved credential data is invalid or corrupted");
+    }
+    if (credentialData.id !== credentialId) {
+      throw new Error(
+        "Credential ID does not match stored credential data; please create a Passkey again",
+      );
     }
 
     // Use passed parameters or default values

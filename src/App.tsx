@@ -69,11 +69,16 @@ function App() {
       const savedCredential = window.localStorage.getItem("credentialData");
       if (savedCredential) {
         const credentialData = parseStoredCredentialInfo(savedCredential);
-        if (!credentialData) return;
+        if (!credentialData) {
+          setAptBalance(null);
+          return;
+        }
         const balance = await getAptBalance(
           credentialData.publicKey.aptosAddress,
         );
         setAptBalance(balance);
+      } else {
+        setAptBalance(null);
       }
     } catch (error) {
       console.error("Failed to fetch APT balance:", error);
@@ -109,10 +114,17 @@ function App() {
 
       console.log("credential", credential);
 
+      if (!credential) {
+        showError("Passkey creation was cancelled or is not supported");
+        return;
+      }
+      if (!(credential instanceof PublicKeyCredential)) {
+        showError("Unexpected credential type from the browser");
+        return;
+      }
+
       // Get complete credential information
-      const credentialInfo = getCredentialInfo(
-        credential as PublicKeyCredential,
-      );
+      const credentialInfo = getCredentialInfo(credential);
 
       if (credentialInfo) {
         console.log("==== Passkey Created Successfully ===");
