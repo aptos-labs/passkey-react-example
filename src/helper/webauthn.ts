@@ -497,6 +497,17 @@ function isValidAptosAccountAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{64}$/.test(addr);
 }
 
+/** Credential rawId encoded as standard base64 (matches Buffer.toString("base64") in getCredentialInfo). */
+function isValidCredentialIdBase64(id: string): boolean {
+  if (!/^[A-Za-z0-9+/]+=*$/.test(id) || id.length % 4 !== 0) return false;
+  try {
+    const buf = Buffer.from(id, "base64");
+    return buf.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Parse credential JSON from localStorage with basic shape checks (avoids unsafe casts).
  */
@@ -507,7 +518,12 @@ export function parseStoredCredentialInfo(json: string): CredentialInfo | null {
     const id = parsed.id;
     const type = parsed.type;
     const pk = parsed.publicKey;
-    if (typeof id !== "string" || typeof type !== "string" || !isRecord(pk))
+    if (
+      typeof id !== "string" ||
+      typeof type !== "string" ||
+      !isRecord(pk) ||
+      !isValidCredentialIdBase64(id)
+    )
       return null;
     const { base64, hex, aptosAddress } = pk;
     if (

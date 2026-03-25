@@ -285,7 +285,12 @@ function App() {
       const savedCredential = window.localStorage.getItem("credentialData");
       if (savedCredential) {
         const credentialData = parseStoredCredentialInfo(savedCredential);
-        if (!credentialData) return;
+        if (!credentialData) {
+          showError(
+            "Saved credential data is invalid or corrupted. Please recreate your passkey.",
+          );
+          return;
+        }
         await requestFaucet(credentialData.publicKey.aptosAddress);
 
         // Wait for transaction to complete
@@ -293,6 +298,10 @@ function App() {
 
         // Refresh balance
         await fetchAptBalance();
+      } else {
+        showError(
+          "No saved credential data found. Please create a passkey first.",
+        );
       }
     } catch (error) {
       console.error("Faucet request failed:", error);
@@ -311,9 +320,18 @@ function App() {
     const savedCredential = window.localStorage.getItem("credentialData");
     if (savedCredential) {
       const credentialData = parseStoredCredentialInfo(savedCredential);
-      if (!credentialData) return;
+      if (!credentialData) {
+        showError(
+          "Saved credential data is invalid or corrupted. Please recreate your passkey.",
+        );
+        return;
+      }
       const faucetUrl = `https://aptos.dev/network/faucet?address=${credentialData.publicKey.aptosAddress}`;
       window.open(faucetUrl, "_blank");
+    } else {
+      showError(
+        "No saved credential data found. Please create a passkey first.",
+      );
     }
   };
 
