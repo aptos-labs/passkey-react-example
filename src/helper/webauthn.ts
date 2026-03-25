@@ -647,7 +647,7 @@ export async function submitTransfer(
         typeArguments: [],
       },
       options: {
-        maxGasAmount: 2000,
+        maxGasAmount: 12000,
         gasUnitPrice: 100,
       },
     });
