@@ -200,7 +200,7 @@
 
 .technical-info p {
   margin: 0.5rem 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 0.9rem;
 }
 
@@ -228,7 +228,9 @@
 .modal-content {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
   max-width: 600px;
   width: 90%;
   max-height: 80vh;
@@ -292,7 +294,7 @@
   padding: 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 0.875rem;
   background-color: #f9fafb;
   color: #374151;
@@ -356,12 +358,12 @@
   #root {
     padding: 1.5rem;
   }
-  
+
   .feature-grid {
     grid-template-columns: 1fr;
     gap: 1.5rem;
   }
-  
+
   .demo-description {
     font-size: 1rem;
     margin: 1rem 0 2rem 0;
@@ -374,98 +376,98 @@
     padding: 1rem;
     min-width: 375px;
   }
-  
+
   .feature-grid {
     grid-template-columns: 1fr;
     gap: 1rem;
     margin-bottom: 2rem;
   }
-  
+
   .feature-card {
     padding: 1.25rem;
     min-height: auto;
   }
-  
+
   .feature-icon {
     font-size: 2.5rem;
     margin-bottom: 0.75rem;
   }
-  
+
   .feature-card h3 {
     font-size: 1rem;
     margin-bottom: 0.75rem;
   }
-  
+
   .feature-card p {
     font-size: 0.875rem;
     margin-bottom: 1rem;
     line-height: 1.4;
   }
-  
+
   .feature-button {
     padding: 12px 16px;
     font-size: 0.875rem;
     width: 100%;
   }
-  
+
   .demo-description {
     font-size: 0.9rem;
     margin: 1rem 0 1.5rem 0;
     padding: 0 0.5rem;
     line-height: 1.5;
   }
-  
+
   .info-section {
     padding: 1.25rem;
     margin-top: 1.5rem;
   }
-  
+
   .info-section h3 {
     font-size: 1.125rem;
     margin-bottom: 0.75rem;
   }
-  
+
   .info-section p {
     font-size: 0.875rem;
     line-height: 1.5;
   }
-  
+
   .benefits-list li {
     margin: 0.5rem 0;
     font-size: 0.875rem;
   }
-  
+
   .technical-info {
     padding: 1rem;
   }
-  
+
   .technical-info p {
     font-size: 0.8rem;
   }
-  
+
   .modal-content {
     width: calc(100% - 20px);
     margin: 10px;
     max-height: 90vh;
     min-width: 335px; /* 375px - 20px margin on each side */
   }
-  
+
   .modal-header,
   .modal-body,
   .modal-footer {
     padding: 16px;
   }
-  
+
   .modal-header h2 {
     font-size: 1.125rem;
   }
-  
+
   .copy-field {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
   }
-  
+
   .copy-input {
     width: 100%;
     font-size: 0.8rem;
@@ -473,13 +475,13 @@
     box-sizing: border-box;
     max-width: 100%;
   }
-  
+
   .copy-button {
     width: 100%;
     padding: 10px;
     font-size: 0.8rem;
   }
-  
+
   .transfer-input,
   .network-select {
     font-size: 0.875rem;
@@ -487,37 +489,37 @@
     box-sizing: border-box;
     max-width: 100%;
   }
-  
+
   .info-section h3 {
     font-size: 0.9rem;
     margin-bottom: 8px;
   }
-  
+
   .network-info,
   .amount-info {
     font-size: 0.7rem;
     padding: 8px;
   }
-  
+
   .balance-display {
     min-height: 60px;
     padding: 12px;
     margin-bottom: 12px;
   }
-  
+
   .balance-value {
     font-size: 1.25rem;
   }
-  
+
   .balance-update {
     font-size: 0.7rem;
   }
-  
+
   .faucet-section {
     margin-top: 12px;
     padding-top: 12px;
   }
-  
+
   .faucet-button {
     padding: 10px 12px;
     font-size: 0.8rem;
@@ -529,85 +531,85 @@
   #root {
     padding: 0.75rem;
   }
-  
+
   .feature-card {
     padding: 1rem;
   }
-  
+
   .feature-icon {
     font-size: 2.25rem;
   }
-  
+
   .feature-card h3 {
     font-size: 0.95rem;
   }
-  
+
   .feature-card p {
     font-size: 0.8rem;
   }
-  
+
   .feature-button {
     padding: 10px 14px;
     font-size: 0.8rem;
   }
-  
+
   .demo-description {
     font-size: 0.85rem;
     padding: 0 0.25rem;
   }
-  
+
   .info-section {
     padding: 1rem;
   }
-  
+
   .modal-content {
     margin: 8px;
     width: calc(100% - 16px);
     min-width: 359px; /* 375px - 8px margin on each side */
   }
-  
+
   .modal-header,
   .modal-body,
   .modal-footer {
     padding: 12px;
   }
-  
+
   .balance-display {
     min-height: 50px;
     padding: 10px;
     margin-bottom: 10px;
   }
-  
+
   .balance-value {
     font-size: 1.1rem;
   }
-  
+
   .balance-update {
     font-size: 0.65rem;
   }
-  
+
   .faucet-section {
     margin-top: 10px;
     padding-top: 10px;
   }
-  
+
   .faucet-button {
     padding: 8px 10px;
     font-size: 0.75rem;
   }
-  
+
   .copy-input {
     font-size: 0.75rem;
     padding: 8px;
     box-sizing: border-box;
     max-width: 100%;
   }
-  
+
   .copy-button {
     padding: 8px;
     font-size: 0.75rem;
   }
-  
+
   .transfer-input,
   .network-select {
     font-size: 0.8rem;
@@ -655,7 +657,7 @@
   padding: 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 0.875rem;
   background-color: white;
   color: #374151;
@@ -719,7 +721,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Status display styles */
@@ -918,7 +922,7 @@
   font-weight: 700;
   color: #059669;
   margin-bottom: 4px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
 }
 
 .balance-update {
