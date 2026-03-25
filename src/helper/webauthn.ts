@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /** Some code sourced from https://rsolomakhin.github.io/pr/spc/ */
 
 import { sha3_256 } from "@noble/hashes/sha3.js";
@@ -18,7 +17,7 @@ import {
 } from "@aptos-labs/ts-sdk";
 import { parseAuthenticatorData, convertCOSEtoPKCS } from "@simplewebauthn/server/helpers";
 import { Secp256r1PublicKey } from "@aptos-labs/ts-sdk";
-import { ECDSASignatureFormat } from "@noble/curves/abstract/weierstrass";
+import type { ECDSASignatureFormat } from "@noble/curves/abstract/weierstrass.js";
 
 // Network configuration type
 interface NetworkConfig {
@@ -82,7 +81,7 @@ export const generateTestRawTxn = async () => {
 };
 
 export const p256SignatureFromDER = (derSig: Uint8Array) => {
-  let sig = p256.Signature.fromBytes(derSig, 'der');
+  const sig = p256.Signature.fromBytes(derSig, 'der');
   
   const rawSig = sig.toBytes('compact');
   return rawSig;
@@ -390,8 +389,8 @@ export function calculateAptosAddressFromPublicKey(publicKeyBytes: Uint8Array): 
       throw new Error(`Incorrect public key format: first byte should be 0x04, actual is 0x${publicKeyBytes[0].toString(16)}`);
     }
 
-    let publicKey = new Secp256r1PublicKey(publicKeyBytes);
-    let authKey = publicKey.authKey();
+    const publicKey = new Secp256r1PublicKey(publicKeyBytes);
+    const authKey = publicKey.authKey();
      
     return authKey.derivedAddress().toString();
   } catch (error) {
@@ -413,7 +412,7 @@ export function parsePublicKey(response: PublicKeyCredential): Uint8Array {
 /**
  * Get complete credential information
  */
-export function getCredentialInfo(credential: PublicKeyCredential): {
+export type CredentialInfo = {
   id: string;
   type: string;
   publicKey: {
@@ -421,8 +420,10 @@ export function getCredentialInfo(credential: PublicKeyCredential): {
     hex: string;
     aptosAddress: string;
   };
-  rawData: any;
-} | null {
+  rawData: Uint8Array;
+};
+
+export function getCredentialInfo(credential: PublicKeyCredential): CredentialInfo | null {
   try {
     const response = credential;
     console.log("response", response);
@@ -552,7 +553,7 @@ export async function submitTransfer(
       extensions: {},              // Extensions
     };
   
-    let credential = await navigator.credentials.get({
+    const credential = await navigator.credentials.get({
       publicKey,
     });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import { Buffer } from "buffer";
@@ -16,15 +16,24 @@ import {
   checkTransactionStatusWithTimeout,
   getAptBalance,
   requestFaucet,
+  type CredentialInfo,
 } from "./helper/webauthn";
 import { Hex } from "@aptos-labs/ts-sdk";
+
+type SignatureModalData = {
+  rawTransaction: string;
+  authenticatorData: string;
+  clientDataJSON: string;
+  signature: string;
+  credentialId: string;
+};
 
 function App() {
   const [credentialId, setCredentialId] = useState<string | null>(
     window.localStorage.getItem("credentialId")
   );
   const [showPublicKeyModal, setShowPublicKeyModal] = useState(false);
-  const [publicKeyData, setPublicKeyData] = useState<any>(null);
+  const [publicKeyData, setPublicKeyData] = useState<CredentialInfo | null>(null);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferData, setTransferData] = useState({
     senderAddress: '',
@@ -36,35 +45,53 @@ function App() {
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
   const [transactionStatus, setTransactionStatus] = useState<string>('');
   const [showSignSuccessModal, setShowSignSuccessModal] = useState(false);
-  const [signatureData, setSignatureData] = useState<any>(null);
+  const [signatureData, setSignatureData] = useState<SignatureModalData | null>(null);
   const [showCreateSuccessModal, setShowCreateSuccessModal] = useState(false);
-  const [createSuccessData, setCreateSuccessData] = useState<any>(null);
+  const [createSuccessData, setCreateSuccessData] = useState<CredentialInfo | null>(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [aptBalance, setAptBalance] = useState<number | null>(null);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [isRequestingFaucet, setIsRequestingFaucet] = useState(false);
 
+  // Function to get user's APT balance
+  const fetchAptBalance = useCallback(async () => {
+    if (!credentialId) return;
+
+    try {
+      setIsLoadingBalance(true);
+      const savedCredential = window.localStorage.getItem("credentialData");
+      if (savedCredential) {
+        const credentialData = JSON.parse(savedCredential) as CredentialInfo;
+        const balance = await getAptBalance(credentialData.publicKey.aptosAddress);
+        setAptBalance(balance);
+      }
+    } catch (error) {
+      console.error("Failed to fetch APT balance:", error);
+      setAptBalance(null);
+    } finally {
+      setIsLoadingBalance(false);
+    }
+  }, [credentialId]);
+
   // Auto-refresh balance every 5 seconds when transfer modal is open
   useEffect(() => {
     let interval: number;
-    
+
     if (showTransferModal && credentialId) {
-      // Initial fetch
-      fetchAptBalance();
-      
-      // Set up interval for auto-refresh
+      void fetchAptBalance();
+
       interval = window.setInterval(() => {
-        fetchAptBalance();
+        void fetchAptBalance();
       }, 5000);
     }
-    
+
     return () => {
       if (interval) {
         clearInterval(interval);
       }
     };
-  }, [showTransferModal, credentialId]);
+  }, [showTransferModal, credentialId, fetchAptBalance]);
 
   // Create passkey through credential registration ceremony
   const createPasskey = async () => {
@@ -98,9 +125,10 @@ function App() {
       setCredentialId(credentialInfo?.id || '');
       window.localStorage.setItem("credentialId", credentialInfo?.id || '');
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to create Passkey:", error);
-      showError(`Failed to create Passkey: ${error.message || error}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(`Failed to create Passkey: ${msg}`);
     }
   };
 
@@ -109,14 +137,20 @@ function App() {
     try {
       const savedCredential = window.localStorage.getItem("credentialData");
       if (savedCredential) {
-        const credentialData = JSON.parse(savedCredential);
+        const credentialData = JSON.parse(savedCredential) as CredentialInfo;
         console.log("==== Saved Passkey Public Key Information ===");
         console.log("Credential ID:", credentialData.id);
         console.log("Public Key (Base64):", credentialData.publicKey.base64);
         console.log("Public Key (Hex):", credentialData.publicKey.hex);
-        console.log("Public Key (Uint8Array):", new Hex(credentialData.publicKey.hex).toUint8Array());
+        console.log(
+          "Public Key (Uint8Array):",
+          Hex.fromHexInput(credentialData.publicKey.hex).toUint8Array()
+        );
         
-        console.log("Aptos Address:", calculateAptosAddressFromPublicKey(Buffer.from(credentialData.publicKey.hex, "hex")));
+        console.log(
+          "Aptos Address:",
+          calculateAptosAddressFromPublicKey(new Uint8Array(Buffer.from(credentialData.publicKey.hex, "hex")))
+        );
         
         // Show modal
         setShowPublicKeyModal(true);
@@ -124,7 +158,7 @@ function App() {
       } else {
         showError("Please create a Passkey credential first");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to get public key:", error);
       showError("Failed to get public key, please check console");
     }
@@ -177,9 +211,10 @@ function App() {
       // Show success modal
       setSignatureData(signatureInfo);
       setShowSignSuccessModal(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Signing failed:", error);
-      showError(`Signing failed: ${error.message || error}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(`Signing failed: ${msg}`);
     }
   };
 
@@ -194,7 +229,7 @@ function App() {
     try {
       await navigator.clipboard.writeText(text);
       // Success feedback could be added here if needed
-    } catch (err) {
+    } catch {
       // If navigator.clipboard is not available, use traditional method
       const textArea = document.createElement("textarea");
       textArea.value = text;
@@ -206,26 +241,6 @@ function App() {
     }
   };
 
-  // Function to get user's APT balance
-  const fetchAptBalance = async () => {
-    if (!credentialId) return;
-    
-    try {
-      setIsLoadingBalance(true);
-      const savedCredential = window.localStorage.getItem("credentialData");
-      if (savedCredential) {
-        const credentialData = JSON.parse(savedCredential);
-        const balance = await getAptBalance(credentialData.publicKey.aptosAddress);
-        setAptBalance(balance);
-      }
-    } catch (error) {
-      console.error("Failed to fetch APT balance:", error);
-      setAptBalance(null);
-    } finally {
-      setIsLoadingBalance(false);
-    }
-  };
-
   // Function to request faucet (devnet only)
   const handleFaucetRequest = async () => {
     if (!credentialId) return;
@@ -234,7 +249,7 @@ function App() {
       setIsRequestingFaucet(true);
       const savedCredential = window.localStorage.getItem("credentialData");
       if (savedCredential) {
-        const credentialData = JSON.parse(savedCredential);
+        const credentialData = JSON.parse(savedCredential) as CredentialInfo;
         await requestFaucet(credentialData.publicKey.aptosAddress);
         
         // Wait for transaction to complete
@@ -257,7 +272,7 @@ function App() {
     
     const savedCredential = window.localStorage.getItem("credentialData");
     if (savedCredential) {
-      const credentialData = JSON.parse(savedCredential);
+      const credentialData = JSON.parse(savedCredential) as CredentialInfo;
       const faucetUrl = `https://aptos.dev/network/faucet?address=${credentialData.publicKey.aptosAddress}`;
       window.open(faucetUrl, '_blank');
     }
@@ -643,8 +658,9 @@ function App() {
                       const status = await checkTransactionStatusWithTimeout(hash);
                       setTransactionStatus(status);
                     }
-                  } catch (error: any) {
-                    setTransactionStatus(`Transfer failed: ${error.message || error}`);
+                  } catch (error: unknown) {
+                    const msg = error instanceof Error ? error.message : String(error);
+                    setTransactionStatus(`Transfer failed: ${msg}`);
                   } finally {
                     setIsTransferring(false);
                   }
