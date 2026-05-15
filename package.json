@@ -13,6 +13,11 @@
   },
   "packageManager": "pnpm@10.15.0",
   "pnpm": {
+    "overrides": {
+      "brace-expansion@1.1.12": "1.1.13",
+      "flatted": "^3.4.2",
+      "picomatch@4.0.3": "4.0.4"
+    },
     "peerDependencyRules": {
       "allowedVersions": {
         "typescript": "6"
@@ -41,7 +46,7 @@
     "globals": "17.4.0",
     "prettier": "3.8.1",
     "typescript": "6.0.2",
-    "typescript-eslint": "8.57.2",
-    "vite": "8.0.2"
+    "typescript-eslint": "8.59.3",
+    "vite": "8.0.13"
   }
 }
