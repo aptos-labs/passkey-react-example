@@ -93,8 +93,6 @@ function App() {
     let interval: ReturnType<typeof setInterval> | undefined;
 
     if (showTransferModal && credentialId) {
-      void fetchAptBalance();
-
       interval = window.setInterval(() => {
         void fetchAptBalance();
       }, 5000);
@@ -396,7 +394,10 @@ function App() {
               Web3 interactions on Aptos.
             </p>
             <button
-              onClick={() => setShowTransferModal(true)}
+              onClick={() => {
+                setShowTransferModal(true);
+                void fetchAptBalance();
+              }}
               className="feature-button transfer-button"
             >
               Submit Transfer

@@ -8,7 +8,7 @@ export default tseslint.config(
   { ignores: ["dist", "node_modules"] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
-  ...reactHooks.configs["flat/recommended"],
+  reactHooks.configs.flat.recommended,
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
